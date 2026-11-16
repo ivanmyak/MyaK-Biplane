@@ -1,0 +1,56 @@
+﻿@page "/"
+@inject NavigationManager Navigation
+
+<PageTitle>@GameInfo.Title</PageTitle>
+
+<main class="menu-shell">
+    <section class="menu-card">
+        <p class="eyebrow">2D dogfight prototype</p>
+        <h1>@GameInfo.Title</h1>
+        <p class="subtitle">
+            Биплан против птеродактиля. Матч до 5 уничтожений, противник — бот.
+        </p>
+
+        <div class="menu-actions">
+            <button class="button button-primary" @onclick="() => Start(PlaneKind.Biplane)">
+                Летать на биплане
+            </button>
+            <button class="button button-secondary" @onclick="() => Start(PlaneKind.Pterodactyl)">
+                Летать на птеродактиле
+            </button>
+        </div>
+
+        <div class="controls-grid">
+            <article class="controls-card">
+                <h2>Биплан</h2>
+                <ul>
+                    <li><kbd>W</kbd> / <kbd>S</kbd> — тяга вперёд / назад</li>
+                    <li><kbd>A</kbd> / <kbd>D</kbd> — поворот</li>
+                    <li><kbd>ЛКМ</kbd> или <kbd>F</kbd> — огонь</li>
+                    <li><kbd>Пробел</kbd> — ускорение</li>
+                </ul>
+            </article>
+
+            <article class="controls-card">
+                <h2>Птеродактиль</h2>
+                <ul>
+                    <li><kbd>WASD</kbd> — движение</li>
+                    <li><kbd>Мышь</kbd> — прицел</li>
+                    <li><kbd>ЛКМ</kbd> — зарядить и бросить копьё</li>
+                    <li><kbd>Пробел</kbd> — рывок</li>
+                </ul>
+            </article>
+        </div>
+
+        <p class="footnote">
+            <kbd>R</kbd> — реванш после матча, <kbd>Esc</kbd> — выход в меню.
+        </p>
+    </section>
+</main>
+
+@code {
+    private void Start(PlaneKind kind)
+    {
+        Navigation.NavigateTo($"/play/{kind.ToString().ToLowerInvariant()}");
+    }
+}

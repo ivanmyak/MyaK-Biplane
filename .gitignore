@@ -361,3 +361,14 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# MyaK Biplane: local secrets and environment files
+.env
+debug.env
+*.env
+!.env.example
+!debug.env.example
+
+# MyaK Biplane: runtime data (Serilog files, local databases)
+Data/
+**/Data/Logs/

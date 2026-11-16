@@ -1,0 +1,108 @@
+@page "/play/{Kind}"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>@GameInfo.Title</PageTitle>
+
+<div class="game-shell">
+    <canvas id="gameCanvas" class="game-canvas"></canvas>
+
+    <a class="back-link" href="/">← В меню</a>
+
+    <div class="game-help">
+        <span>Противник: бот</span>
+        <span>Матч до 5 уничтожений</span>
+        <span><kbd>R</kbd> — реванш</span>
+        <span><kbd>Esc</kbd> — меню</span>
+    </div>
+</div>
+
+@code {
+    private const string CanvasId = "gameCanvas";
+
+    private DotNetObjectReference<Play>? _dotNetRef;
+    private GameSession? _session;
+    private PlaneKind _playerKind;
+    private double _lastTimestamp;
+    private bool _started;
+
+    [Parameter]
+    public string Kind { get; set; } = "biplane";
+
+    protected override void OnInitialized()
+    {
+        _playerKind = Enum.TryParse<PlaneKind>(Kind, true, out var parsed)
+            ? parsed
+            : PlaneKind.Biplane;
+
+        _session = new GameSession(_playerKind, Random.Shared.Next());
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _started || _session is null)
+        {
+            return;
+        }
+
+        _started = true;
+        _dotNetRef = DotNetObjectReference.Create(this);
+
+        await JS.InvokeVoidAsync(
+            "myakBiplane.start",
+            _dotNetRef,
+            CanvasId,
+            _playerKind.ToString().ToLowerInvariant());
+    }
+
+    /// <summary>
+    /// Вызывается JavaScript-рендерером один раз за кадр.
+    /// </summary>
+    /// <param name="timestamp">Метка времени requestAnimationFrame в миллисекундах.</param>
+    /// <param name="input">Текущий ввод игрока.</param>
+    /// <returns>JSON-снимок состояния для отрисовки.</returns>
+    [JSInvokable]
+    public string Tick(double timestamp, PlayerInput input)
+    {
+        if (_session is null)
+        {
+            return "{}";
+        }
+
+        var deltaSeconds = _lastTimestamp <= 0d
+            ? 0f
+            : (float)Math.Clamp((timestamp - _lastTimestamp) / 1000d, 0d, 0.25d);
+
+        _lastTimestamp = timestamp;
+        _session.Update(input, deltaSeconds);
+        return _session.CreateSnapshotJson();
+    }
+
+    /// <summary>
+    /// Возвращает игрока в главное меню по нажатию Escape.
+    /// </summary>
+    [JSInvokable]
+    public void ExitToMenu()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        if (_started)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("myakBiplane.stop", CanvasId);
+            }
+            catch (Exception)
+            {
+                // Страница уже могла быть выгружена браузером.
+            }
+        }
+
+        _dotNetRef?.Dispose();
+    }
+}

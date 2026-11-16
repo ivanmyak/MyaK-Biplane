@@ -1,0 +1,35 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,props,targets,csproj,slnx,md}]
+indent_size = 2
+
+[*.{cs,razor}]
+indent_size = 4
+
+[*.cs]
+dotnet_sort_system_directives_first = true
+csharp_new_line_before_open_brace = all
+csharp_style_namespace_declarations = file_scoped:suggestion
+# Namespace MyaKBiplane.Shared — осознанное имя проекта.
+dotnet_diagnostic.CA1716.severity = none
+# Для прототипа достаточно обычного ILogger; source-generated логи добавим при необходимости.
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none
+
+[MyaKBiplane.Tests/**/*.cs]
+# Тестовые методы именуются в стиле Method_Scenario_Expected.
+dotnet_diagnostic.CA1707.severity = none
+
+[*.razor]
+indent_size = 4
+
+[*.js]
+indent_size = 4

@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="MyaKBiplane.Client/MyaKBiplane.Client.csproj" />
+  <Project Path="MyaKBiplane.Core/MyaKBiplane.Core.csproj" />
+  <Project Path="MyaKBiplane.Game/MyaKBiplane.Game.csproj" />
+  <Project Path="MyaKBiplane.Server/MyaKBiplane.Server.csproj" />
+  <Project Path="MyaKBiplane.Shared/MyaKBiplane.Shared.csproj" />
+  <Project Path="MyaKBiplane.Tests/MyaKBiplane.Tests.csproj" />
+</Solution>

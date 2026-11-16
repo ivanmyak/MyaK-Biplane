@@ -1,0 +1,57 @@
+# Локальная debug-оркестрация MyaK Biplane.
+#
+# Отличия от docker-compose.yml:
+#   * НЕ создаёт собственный PostgreSQL — использует существующий контейнер
+#     из внешней сети shared-net;
+#   * собирает образы в конфигурации Debug;
+#   * монтирует логи сервера в ./MyaKBiplane.Server/Data/Logs, чтобы их было видно на хосте;
+#   * использует debug.env вместо .env.
+#
+# Запуск:
+#   Copy-Item debug.env.example debug.env
+#   docker compose --env-file debug.env -f docker-compose.debug.yml up -d --build
+name: myak-biplane-debug
+
+services:
+  server:
+    container_name: myak-biplane-server-debug
+    image: ${DOCKER_REGISTRY-}myak-biplane-server-debug
+    build:
+      context: .
+      dockerfile: MyaKBiplane.Server/Dockerfile
+      args:
+        BUILD_CONFIGURATION: Debug
+    restart: unless-stopped
+    env_file:
+      - debug.env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      TZ: ${TZ:-Europe/Moscow}
+    ports:
+      - "${SERVER_PORT:-5080}:8080"
+    volumes:
+      - ./MyaKBiplane.Server/Data/Logs:/app/Data/Logs
+    networks:
+      - default
+      - shared-net
+
+  client:
+    container_name: myak-biplane-client-debug
+    image: ${DOCKER_REGISTRY-}myak-biplane-client-debug
+    build:
+      context: .
+      dockerfile: MyaKBiplane.Client/Dockerfile
+      args:
+        BUILD_CONFIGURATION: Debug
+    restart: unless-stopped
+    ports:
+      - "${CLIENT_PORT:-5081}:80"
+    depends_on:
+      - server
+    networks:
+      - default
+
+networks:
+  shared-net:
+    external: true
