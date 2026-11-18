@@ -235,13 +235,13 @@ public sealed class SpawnProtectionTests
 
         var steps = 0;
 
-        while (player.IsEntering && steps < 120)
+        while (player.IsEntering && steps < 240)
         {
             world.Step(default, default, 1f / 60f);
             steps++;
         }
 
-        Assert.InRange(steps, 87, 93);
+        Assert.InRange(steps, 141, 147);
         Assert.False(player.IsEntering);
         Assert.False(bot.IsEntering);
         Assert.True(player.ProtectionRemaining > GameBalance.SpawnProtectionDuration - 0.1f);
@@ -249,6 +249,38 @@ public sealed class SpawnProtectionTests
         Assert.Equal(GameBalance.SpawnEntrySpeed, player.Velocity.Length(), 1);
         Assert.True(player.Rotation < 0f);
         Assert.True(bot.Rotation > MathF.PI);
+    }
+
+    /// <summary>
+    /// Взлёт биплана плавный: аппарат сначала катится по земле,
+    /// а затем без рывка набирает высоту и выходит на курсовую скорость.
+    /// </summary>
+    [Fact]
+    public void SpawnEntry_BiplaneTakeoffIsGradual()
+    {
+        var world = new GameWorld(seed: 39);
+        var plane = world.ActivePlane(0)!;
+        var previous = plane.Position;
+        var maxStep = 0f;
+        var steps = 0;
+
+        while (plane.IsEntering && steps < 240)
+        {
+            world.Step(default, default, 1f / 60f);
+            maxStep = MathF.Max(maxStep, Vector2.Distance(previous, plane.Position));
+            previous = plane.Position;
+            steps++;
+
+            if (steps == 36)
+            {
+                // Через 0,6 секунды аппарат ещё катится у земли, а не взмывает вверх.
+                Assert.True(plane.Position.Y > GameBalance.SpawnY + 120f);
+            }
+        }
+
+        Assert.True(steps > 120);
+        Assert.True(maxStep < 12f);
+        Assert.Equal(GameBalance.SpawnEntrySpeed, plane.Velocity.Length(), 1);
     }
 
     /// <summary>

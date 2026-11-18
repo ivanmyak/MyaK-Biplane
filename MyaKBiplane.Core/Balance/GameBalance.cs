@@ -42,8 +42,18 @@ public sealed class GameBalance
     /// <summary>Отступ от края мира, из которого аппарат выезжает на спавн.</summary>
     public const float SpawnEntryInset = 56f;
 
-    /// <summary>Длительность анимации выезда и разгона на спавне, в секундах.</summary>
-    public const float SpawnEntryDuration = 1.5f;
+    /// <summary>Длительность плавного выезда и взлёта на спавне, в секундах.</summary>
+    public const float SpawnEntryDuration = 2.4f;
+
+    /// <summary>
+    /// Доля горизонтального пути до контрольной точки разгона по земле.
+    /// </summary>
+    public const float SpawnEntryRollShare = 0.35f;
+
+    /// <summary>
+    /// Доля горизонтального пути, отведённая на подход к точке спавна под курсовым углом.
+    /// </summary>
+    public const float SpawnEntryApproachShare = 0.25f;
 
     /// <summary>Скорость аппарата в момент передачи управления после выезда.</summary>
     public const float SpawnEntrySpeed = 250f;

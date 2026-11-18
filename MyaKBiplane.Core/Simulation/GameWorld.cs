@@ -314,34 +314,37 @@ public sealed class GameWorld
             : GameMath.Clamp(1f - (plane.EntryRemaining / duration), 0f, 1f);
         var end = SpawnPoint(plane.Slot);
         var finalRotation = SpawnApproachRotation(plane.Slot);
-        var runRotation = SpawnRunRotation(plane.Slot);
-        var startX = SpawnEntryX(plane.Slot);
 
         if (plane.Kind == PlaneKind.Pterodactyl)
         {
             var eased = SmoothStep(progress);
-            plane.Position = new Vector2(GameMath.Lerp(startX, end.X, eased), end.Y);
+            plane.Position = new Vector2(GameMath.Lerp(SpawnEntryX(plane.Slot), end.X, eased), end.Y);
             plane.Rotation = finalRotation;
         }
         else
         {
-            var groundY = GameBalance.GroundY - plane.Radius;
-            var midpointX = (startX + end.X) * 0.5f;
+            // Выезд и взлёт описываются одной кривой Безье: аппарат плавно трогается
+            // с места, отрывается от земли и подходит к точке спавна вдоль курса.
+            // Разгон по земле и финальный подход задаются долями горизонтали,
+            // поэтому подъём распределён по всему пути, а не собран в конце.
+            var runRotation = SpawnRunRotation(plane.Slot);
+            var start = new Vector2(SpawnEntryX(plane.Slot), GameBalance.GroundY - plane.Radius);
+            var span = end.X - start.X;
+            var rollPoint = new Vector2(
+                start.X + (span * GameBalance.SpawnEntryRollShare),
+                start.Y);
+            var approachLength = MathF.Abs(span) * GameBalance.SpawnEntryApproachShare;
+            var approachPoint = end - (GameMath.Direction(finalRotation) * approachLength);
 
-            if (progress <= 0.5f)
-            {
-                var eased = SmoothStep(progress * 2f);
-                plane.Position = new Vector2(GameMath.Lerp(startX, midpointX, eased), groundY);
-                plane.Rotation = runRotation;
-            }
-            else
-            {
-                var eased = SmoothStep((progress - 0.5f) * 2f);
-                plane.Position = new Vector2(
-                    GameMath.Lerp(midpointX, end.X, eased),
-                    GameMath.Lerp(groundY, end.Y, eased));
-                plane.Rotation = runRotation + ((finalRotation - runRotation) * eased);
-            }
+            // Разметка времени подобрана так, чтобы к концу анимации скорость
+            // совпадала с курсовой скоростью передачи управления.
+            var endSpeedFactor = approachLength <= 0f
+                ? 1f
+                : GameBalance.SpawnEntrySpeed * duration / (3f * approachLength);
+
+            var t = TakeoffProgress(progress, endSpeedFactor);
+            plane.Position = CubicBezier(start, rollPoint, approachPoint, end, t);
+            plane.Rotation = GameMath.Lerp(runRotation, finalRotation, SmoothStep(progress));
         }
 
         if (plane.EntryRemaining > 0f)
@@ -352,6 +355,38 @@ public sealed class GameWorld
         plane.Position = end;
         plane.Rotation = finalRotation;
         plane.Velocity = GameMath.Direction(finalRotation) * GameBalance.SpawnEntrySpeed;
+    }
+
+    /// <summary>
+    /// Переразметка времени взлёта: трогание с нуля и подход к концу с курсовой скоростью.
+    /// </summary>
+    /// <param name="progress">Линейный прогресс 0..1.</param>
+    /// <param name="endSpeedFactor">Отношение конечной скорости кривой к средней.</param>
+    /// <returns>Параметр кривой 0..1.</returns>
+    private static float TakeoffProgress(float progress, float endSpeedFactor)
+    {
+        var t = GameMath.Clamp(progress, 0f, 1f);
+        var cubic = endSpeedFactor - 2f;
+        var quadratic = 3f - endSpeedFactor;
+        return (cubic * t * t * t) + (quadratic * t * t);
+    }
+
+    /// <summary>
+    /// Точка на кубической кривой Безье.
+    /// </summary>
+    /// <param name="p0">Начальная точка.</param>
+    /// <param name="p1">Первая контрольная точка.</param>
+    /// <param name="p2">Вторая контрольная точка.</param>
+    /// <param name="p3">Конечная точка.</param>
+    /// <param name="t">Параметр 0..1.</param>
+    /// <returns>Точка кривой.</returns>
+    private static Vector2 CubicBezier(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
+    {
+        var u = 1f - t;
+        return (u * u * u * p0)
+            + (3f * u * u * t * p1)
+            + (3f * u * t * t * p2)
+            + (t * t * t * p3);
     }
 
     /// <summary>
