@@ -372,3 +372,4 @@ debug.env
 # MyaK Biplane: runtime data (Serilog files, local databases)
 Data/
 **/Data/Logs/
+/.debug_scripts/sql

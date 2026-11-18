@@ -2,6 +2,7 @@
     "use strict";
 
     const games = new Map();
+    const pilotRadius = 7.65;
 
     const clouds = [];
     for (let i = 0; i < 22; i += 1) {
@@ -88,10 +89,14 @@
             aimY: game.mouse.worldY,
             fire: game.mouse.down || keys.has("KeyF"),
             ability: keys.has("Space"),
-            restart: game.restartPressed
+            reload: game.reloadPressed,
+            eject: game.ejectPressed,
+            parachute: game.parachutePressed
         };
 
-        game.restartPressed = false;
+        game.reloadPressed = false;
+        game.ejectPressed = false;
+        game.parachutePressed = false;
         return input;
     }
 
@@ -99,6 +104,11 @@
         if (!game.running) {
             return;
         }
+
+        const dt = game.lastTimestamp
+            ? Math.max(0, Math.min(0.1, (timestamp - game.lastTimestamp) / 1000))
+            : 0;
+        game.lastTimestamp = timestamp;
 
         const input = buildInput(game);
         let stateJson;
@@ -115,17 +125,28 @@
             return;
         }
 
+        updateParticles(game, dt);
+
         if (stateJson) {
             try {
                 const state = JSON.parse(stateJson);
-                updateView(game, state);
-                draw(game, state);
+
+                if (state && state.worldWidth) {
+                    game.state = state;
+                    updateView(game, state);
+                    handleEvents(game, state);
+                    draw(game, state);
+                }
             } catch (error) {
                 console.error("MyaKBiplane: render state is invalid", error);
             }
         }
 
         game.rafId = window.requestAnimationFrame((nextTimestamp) => frame(game, nextTimestamp));
+    }
+
+    function slotColor(slot, yourSlot) {
+        return slot === yourSlot ? "#38bdf8" : "#f87171";
     }
 
     function draw(game, state) {
@@ -149,38 +170,51 @@
         ctx.clip();
 
         drawClouds(ctx, state.elapsed || 0, view);
+        drawGround(ctx, state, view);
         drawWorldBorder(ctx, view);
+        drawTower(ctx, state, view);
 
         for (const projectile of state.projectiles || []) {
-            drawProjectile(ctx, projectile);
+            drawProjectile(ctx, projectile, state.yourSlot || 0);
         }
 
-        for (const plane of state.planes || []) {
+        const planes = (state.planes || []).slice().sort((a, b) => {
+            if (a.abandoned === b.abandoned) {
+                return 0;
+            }
+
+            return a.abandoned ? -1 : 1;
+        });
+
+        for (const plane of planes) {
             if (!plane.alive) {
                 continue;
             }
 
             ctx.save();
+
+            if (plane.abandoned) {
+                ctx.globalAlpha = 0.55;
+            }
+
             ctx.translate(plane.x, plane.y);
             ctx.rotate(plane.angle);
 
             if (plane.kind === "pterodactyl") {
-                drawPterodactyl(ctx, plane, state.elapsed || 0);
+                drawPterodactyl(ctx, plane, state.elapsed || 0, state.yourSlot || 0);
             } else {
-                drawBiplane(ctx, plane, state.elapsed || 0);
+                drawBiplane(ctx, plane, state.elapsed || 0, state.yourSlot || 0);
             }
 
             ctx.restore();
-            drawPlaneLabel(ctx, plane);
+            drawPlaneLabel(ctx, plane, state);
         }
 
-        for (const particle of state.particles || []) {
-            ctx.globalAlpha = Math.max(0, Math.min(1, particle.alpha || 0));
-            ctx.fillStyle = particle.color || "#ffffff";
-            ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.5, particle.size || 1), 0, Math.PI * 2);
-            ctx.fill();
+        for (const pilot of state.pilots || []) {
+            drawPilot(ctx, pilot, state);
         }
+
+        drawParticles(ctx, game.particles);
 
         ctx.globalAlpha = 1;
         ctx.restore();
@@ -207,6 +241,32 @@
         ctx.globalAlpha = 1;
     }
 
+    function drawGround(ctx, state, view) {
+        const groundY = state.groundY || (view.worldHeight - 24);
+        const gradient = ctx.createLinearGradient(0, groundY, 0, view.worldHeight);
+        gradient.addColorStop(0, "#123a26");
+        gradient.addColorStop(1, "#071b12");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, groundY, view.worldWidth, view.worldHeight - groundY);
+
+        ctx.strokeStyle = "rgba(74, 222, 128, 0.35)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, groundY);
+        ctx.lineTo(view.worldWidth, groundY);
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(74, 222, 128, 0.12)";
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x < view.worldWidth; x += 46) {
+            ctx.beginPath();
+            ctx.moveTo(x, groundY + 8);
+            ctx.lineTo(x + 18, groundY + 26);
+            ctx.stroke();
+        }
+    }
+
     function drawWorldBorder(ctx, view) {
         ctx.lineWidth = 4;
         ctx.strokeStyle = "rgba(56, 189, 248, 0.22)";
@@ -229,25 +289,114 @@
         }
     }
 
-    function drawProjectile(ctx, projectile) {
-        const length = projectile.length || (projectile.kind === "spear" ? 40 : 16);
-        const color = projectile.isPlayer ? "#67e8f9" : "#fca5a5";
+    function drawTower(ctx, state, view) {
+        const tower = state.tower;
+
+        if (!tower) {
+            return;
+        }
+
+        const cx = tower.x;
+        const base = tower.baseY || state.groundY || (view.worldHeight - 24);
+        const height = tower.height || 250;
+        const width = tower.width || 48;
+        const top = base - height;
+        const shoulder = width * 0.32;
+        const pulse = 0.55 + (0.45 * Math.sin((state.elapsed || 0) * 2.6));
+
+        ctx.save();
+
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = "#facc15";
+        ctx.beginPath();
+        ctx.moveTo(cx - 8, top - 10);
+        ctx.lineTo(cx + 8, top - 10);
+        ctx.lineTo(cx + 42, base);
+        ctx.lineTo(cx - 42, base);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Левая половина — цвет первого слота.
+        ctx.fillStyle = "#0ea5e9";
+        ctx.beginPath();
+        ctx.moveTo(cx - width / 2, base);
+        ctx.lineTo(cx - shoulder, top);
+        ctx.lineTo(cx, top);
+        ctx.lineTo(cx, base);
+        ctx.closePath();
+        ctx.fill();
+
+        // Правая половина — цвет второго слота.
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath();
+        ctx.moveTo(cx + width / 2, base);
+        ctx.lineTo(cx + shoulder, top);
+        ctx.lineTo(cx, top);
+        ctx.lineTo(cx, base);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(2, 6, 23, 0.55)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, top);
+        ctx.lineTo(cx, base);
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(248, 250, 252, 0.35)";
+        ctx.lineWidth = 1;
+
+        for (let y = top + 26; y < base - 10; y += 34) {
+            ctx.beginPath();
+            ctx.moveTo(cx - width / 2 + 4, y);
+            ctx.lineTo(cx + width / 2 - 4, y);
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = "rgba(2, 6, 23, 0.55)";
+        ctx.fillRect(cx - width / 2 - 7, base - 12, width + 14, 12);
+
+        ctx.shadowColor = "rgba(250, 204, 21, 0.9)";
+        ctx.shadowBlur = 26 * pulse;
+        ctx.fillStyle = `rgba(250, 204, 21, ${0.65 + pulse * 0.35})`;
+        ctx.beginPath();
+        ctx.arc(cx, top - 8, 10 + pulse * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = "#fef9c3";
+        ctx.beginPath();
+        ctx.arc(cx, top - 8, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = "700 11px 'Segoe UI', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(226, 232, 240, 0.65)";
+        ctx.fillText("МАЯК", cx, top - 26);
+
+        ctx.restore();
+    }
+
+    function drawProjectile(ctx, projectile, yourSlot) {
+        const color = slotColor(projectile.slot, yourSlot);
 
         ctx.save();
         ctx.translate(projectile.x, projectile.y);
         ctx.rotate(projectile.angle);
-        ctx.lineCap = "round";
-        ctx.lineWidth = projectile.kind === "spear" ? 3 : 2;
-        ctx.strokeStyle = color;
         ctx.shadowColor = color;
         ctx.shadowBlur = 10;
 
-        ctx.beginPath();
-        ctx.moveTo(-length / 2, 0);
-        ctx.lineTo(length / 2, 0);
-        ctx.stroke();
-
         if (projectile.kind === "spear") {
+            const length = projectile.length || 40;
+            ctx.lineCap = "round";
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(-length / 2, 0);
+            ctx.lineTo(length / 2, 0);
+            ctx.stroke();
+
             ctx.fillStyle = "#f8fafc";
             ctx.beginPath();
             ctx.moveTo(length / 2 + 7, 0);
@@ -255,13 +404,19 @@
             ctx.lineTo(length / 2 - 3, 5);
             ctx.closePath();
             ctx.fill();
+        } else {
+            const radius = Math.max(1.5, projectile.radius || 4.5);
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            ctx.fill();
         }
 
         ctx.restore();
     }
 
-    function drawBiplane(ctx, plane, elapsed) {
-        const color = plane.isPlayer ? "#38bdf8" : "#f87171";
+    function drawBiplane(ctx, plane, elapsed, yourSlot) {
+        const color = slotColor(plane.slot, yourSlot);
         const fill = plane.hitFlash > 0 ? "#ffffff" : color;
 
         ctx.lineWidth = 2;
@@ -272,7 +427,7 @@
         ctx.fill();
         ctx.stroke();
 
-        ctx.fillStyle = plane.hitFlash > 0 ? "#ffffff" : color;
+        ctx.fillStyle = fill;
         ctx.fillRect(-8, -27, 16, 18);
         ctx.fillRect(-8, 9, 16, 18);
         ctx.strokeRect(-8, -27, 16, 18);
@@ -308,8 +463,8 @@
         }
     }
 
-    function drawPterodactyl(ctx, plane, elapsed) {
-        const color = plane.isPlayer ? "#38bdf8" : "#f87171";
+    function drawPterodactyl(ctx, plane, elapsed, yourSlot) {
+        const color = slotColor(plane.slot, yourSlot);
         const fill = plane.hitFlash > 0 ? "#ffffff" : color;
         const flap = Math.sin(elapsed * 13) * 7;
 
@@ -383,10 +538,14 @@
         }
     }
 
-    function drawPlaneLabel(ctx, plane) {
+    function drawPlaneLabel(ctx, plane, state) {
+        const yourSlot = state.yourSlot || 0;
         const width = 62;
         const healthRatio = Math.max(0, Math.min(1, plane.health / plane.maxHealth));
         const barColor = healthRatio > 0.55 ? "#4ade80" : healthRatio > 0.25 ? "#facc15" : "#f87171";
+        const isLocal = plane.slot === yourSlot;
+        const label = plane.isBot ? "БОТ" : isLocal ? "ВЫ" : "СОПЕРНИК";
+        const labelColor = isLocal ? "#bae6fd" : "#fecaca";
 
         ctx.fillStyle = "rgba(2, 6, 23, 0.65)";
         ctx.fillRect(plane.x - width / 2, plane.y - 48, width, 7);
@@ -395,15 +554,175 @@
 
         ctx.font = "600 13px 'Segoe UI', sans-serif";
         ctx.textAlign = "center";
-        ctx.fillStyle = plane.isPlayer ? "#bae6fd" : "#fecaca";
-        ctx.fillText(plane.isPlayer ? "YOU" : "BOT", plane.x, plane.y - 55);
+        ctx.fillStyle = labelColor;
+        ctx.fillText(label, plane.x, plane.y - 55);
+
+        if (plane.abandoned) {
+            ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
+            ctx.font = "600 10px 'Segoe UI', sans-serif";
+            ctx.fillText("БЕЗ ЛЁТЧИКА", plane.x, plane.y + 62);
+        }
+
+        if (plane.protection > 0) {
+            ctx.save();
+            ctx.strokeStyle = "rgba(125, 211, 252, 0.8)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 6]);
+            ctx.beginPath();
+            ctx.arc(plane.x, plane.y, 37, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        if (plane.kind === "biplane") {
+            drawAmmo(ctx, plane);
+        }
+    }
+
+    function drawAmmo(ctx, plane) {
+        if (!plane.magazine) {
+            return;
+        }
+
+        const pipRadius = 2.6;
+        const gap = 8.5;
+        const total = plane.magazine;
+        const startX = plane.x - ((total - 1) * gap) / 2;
+        const y = plane.y - 64;
+
+        if (plane.reload > 0 && plane.reloadDuration > 0) {
+            const width = 58;
+            const progress = Math.max(0, Math.min(1, 1 - (plane.reload / plane.reloadDuration)));
+
+            ctx.fillStyle = "rgba(2, 6, 23, 0.7)";
+            pathRoundRect(ctx, plane.x - width / 2, y - 7, width, 8, 4);
+            ctx.fill();
+            ctx.fillStyle = "#facc15";
+            pathRoundRect(ctx, plane.x - width / 2 + 1, y - 6, (width - 2) * progress, 6, 3);
+            ctx.fill();
+
+            ctx.fillStyle = "rgba(250, 204, 21, 0.9)";
+            ctx.font = "600 9px 'Segoe UI', sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("ПЕРЕЗАРЯДКА", plane.x, y - 11);
+            return;
+        }
+
+        for (let i = 0; i < total; i += 1) {
+            ctx.beginPath();
+            ctx.arc(startX + i * gap, y, pipRadius, 0, Math.PI * 2);
+            ctx.fillStyle = i < plane.ammo ? "#e2e8f0" : "rgba(148, 163, 184, 0.28)";
+            ctx.fill();
+        }
+    }
+
+    function drawPilot(ctx, pilot, state) {
+        if (pilot.state === "inplane" || pilot.state === "waiting") {
+            return;
+        }
+
+        const yourSlot = state.yourSlot || 0;
+        const color = slotColor(pilot.slot, yourSlot);
+        const facing = pilot.facing >= 0 ? 1 : -1;
+        const x = pilot.x;
+        const y = pilot.y;
+
+        ctx.save();
+
+        if (pilot.state === "parachuting") {
+            const sway = Math.sin((state.elapsed || 0) * 2.2 + pilot.slot) * 3;
+
+            ctx.strokeStyle = "rgba(226, 232, 240, 0.55)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x - 16, y - 30);
+            ctx.lineTo(x - 4, y - 8);
+            ctx.moveTo(x + 16, y - 30);
+            ctx.lineTo(x + 4, y - 8);
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.92;
+            ctx.beginPath();
+            ctx.ellipse(x + sway, y - 33, 22, 10, 0, Math.PI, 0);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+
+            ctx.strokeStyle = "rgba(15, 23, 42, 0.55)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.ellipse(x + sway, y - 33, 22, 10, 0, Math.PI, 0);
+            ctx.stroke();
+        }
+
+        if (pilot.state === "falling") {
+            const vy = pilot.vy || 0;
+            const safe = state.safeLandingSpeed || 240;
+            const danger = Math.max(0, Math.min(1, vy / (safe * 2)));
+            const lines = 1 + Math.round(danger * 3);
+
+            ctx.strokeStyle = vy > safe ? "rgba(248, 113, 113, 0.85)" : "rgba(74, 222, 128, 0.85)";
+            ctx.lineWidth = 2;
+
+            for (let i = 0; i < lines; i += 1) {
+                const offset = i * 7;
+
+                ctx.beginPath();
+                ctx.moveTo(x - 8, y - 16 - offset);
+                ctx.lineTo(x, y - 8 - offset);
+                ctx.lineTo(x + 8, y - 16 - offset);
+                ctx.stroke();
+            }
+        }
+
+        ctx.translate(x, y);
+        ctx.scale(facing, 1);
+
+        ctx.fillStyle = "#f8fafc";
+        ctx.beginPath();
+        ctx.arc(0, -pilotRadius * 0.9, pilotRadius * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = color;
+        pathRoundRect(ctx, -pilotRadius * 0.5, -pilotRadius * 0.35, pilotRadius, pilotRadius * 1.7, 3);
+        ctx.fill();
+
+        if (pilot.state === "onground") {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-2, pilotRadius * 1.25);
+            ctx.lineTo(-6, pilotRadius * 2.1);
+            ctx.moveTo(2, pilotRadius * 1.25);
+            ctx.lineTo(6, pilotRadius * 2.1);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    function drawParticles(ctx, particles) {
+        for (const particle of particles) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, particle.alpha));
+            ctx.fillStyle = particle.color;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, Math.max(0.5, particle.size), 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.globalAlpha = 1;
     }
 
     function drawHud(game, state) {
         const ctx = game.ctx;
         const width = game.cssWidth;
-        const player = (state.planes || []).find((plane) => plane.isPlayer);
-        const scoreText = `YOU  ${state.playerScore || 0}  :  ${state.botScore || 0}  BOT`;
+        const yourSlot = state.yourSlot || 0;
+        const scores = state.scores || [0, 0];
+        const yourScore = scores[yourSlot] || 0;
+        const opponentScore = scores[1 - yourSlot] || 0;
+        const opponentIsBot = (state.planes || []).some((plane) => plane.slot !== yourSlot && plane.isBot);
+        const opponentLabel = opponentIsBot ? "БОТ" : "СОПЕРНИК";
+        const scoreText = `ВЫ  ${yourScore}  :  ${opponentScore}  ${opponentLabel}`;
 
         ctx.save();
         ctx.font = "700 16px 'Segoe UI', sans-serif";
@@ -421,12 +740,12 @@
         ctx.fillStyle = "#e2e8f0";
         ctx.fillText(scoreText, width / 2, 33);
 
+        const player = (state.planes || []).find((plane) => plane.slot === yourSlot && !plane.abandoned && plane.alive);
+
         if (player) {
             drawAbilityHud(ctx, game, player);
-        }
-
-        if (state.status === "finished") {
-            drawFinishedOverlay(ctx, game, state);
+        } else {
+            drawPilotHud(ctx, game, state);
         }
 
         ctx.restore();
@@ -434,7 +753,7 @@
 
     function drawAbilityHud(ctx, game, player) {
         const x = game.cssWidth - 230;
-        const y = game.cssHeight - 92;
+        const y = game.cssHeight - 86;
         const width = 210;
         const height = 62;
 
@@ -463,46 +782,210 @@
                 player.reload > 0 ? `Перезарядка: ${player.reload.toFixed(1)} с` : "Готов к броску",
                 x + 14,
                 y + 51);
-        } else {
-            ctx.fillStyle = "#94a3b8";
-            ctx.fillText("УСКОРЕНИЕ", x + 14, y + 19);
+            return;
+        }
 
-            const ready = player.boostCooldown <= 0;
-            const active = player.boost > 0;
-            ctx.fillStyle = active ? "#22d3ee" : ready ? "#4ade80" : "#475569";
-            pathRoundRect(ctx, x + 14, y + 26, width - 28, 10, 5);
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText("МАГАЗИН", x + 14, y + 19);
+
+        const ammo = Math.max(0, player.ammo || 0);
+        const magazine = Math.max(1, player.magazine || 1);
+
+        for (let i = 0; i < magazine; i += 1) {
+            ctx.beginPath();
+            ctx.arc(x + 20 + i * 16, y + 31, 5, 0, Math.PI * 2);
+            ctx.fillStyle = i < ammo ? "#e2e8f0" : "rgba(148, 163, 184, 0.25)";
             ctx.fill();
+        }
 
-            ctx.fillStyle = "#cbd5e1";
+        if (player.reload > 0 && player.reloadDuration > 0) {
+            const progress = Math.max(0, Math.min(1, 1 - (player.reload / player.reloadDuration)));
+            ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+            ctx.fillRect(x + 14, y + 42, width - 28, 8);
+            ctx.fillStyle = "#facc15";
+            ctx.fillRect(x + 14, y + 42, (width - 28) * progress, 8);
+
+            ctx.fillStyle = "#fca5a5";
+            ctx.fillText("Перезарядка…", x + 14, y + 58);
+        } else {
+            const boostReady = player.boostCooldown <= 0;
+            const boostActive = player.boost > 0;
+            const boostCooldown = Math.max(0, player.boostCooldown || 0);
+            ctx.fillStyle = boostActive ? "#22d3ee" : boostReady ? "#4ade80" : "#64748b";
             ctx.fillText(
-                active ? `Активно: ${player.boost.toFixed(1)} с` : ready ? "Готово" : `Кулдаун: ${player.boostCooldown.toFixed(1)} с`,
+                boostActive
+                    ? `Ускорение: ${player.boost.toFixed(1)} с`
+                    : boostReady
+                        ? "Ускорение готово · Пробел"
+                        : `Ускорение через ${Math.ceil(boostCooldown)} с`,
                 x + 14,
-                y + 51);
+                y + 53);
         }
     }
 
-    function drawFinishedOverlay(ctx, game, state) {
-        const width = game.cssWidth;
-        const height = game.cssHeight;
+    function drawPilotHud(ctx, game, state) {
+        const x = game.cssWidth - 252;
+        const y = game.cssHeight - 106;
+        const width = 234;
+        const height = 88;
 
-        ctx.fillStyle = "rgba(2, 6, 23, 0.66)";
-        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = "rgba(2, 6, 23, 0.62)";
+        pathRoundRect(ctx, x, y, width, height, 12);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
 
-        const title = state.winner === "player"
-            ? "ПОБЕДА"
-            : state.winner === "bot"
-                ? "ПОРАЖЕНИЕ"
-                : "НИЧЬЯ";
+        const yourSlot = state.yourSlot || 0;
+        const pilot = (state.pilots || []).find((entry) => entry.slot === yourSlot);
+        const pilotState = pilot ? pilot.state : "waiting";
+        const vy = pilot && typeof pilot.vy === "number" ? Math.max(0, pilot.vy) : 0;
+        const safe = state.safeLandingSpeed || 240;
+        const tooFast = vy > safe;
 
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = state.winner === "player" ? "#7dd3fc" : state.winner === "bot" ? "#fca5a5" : "#e2e8f0";
-        ctx.font = "800 64px 'Segoe UI', sans-serif";
-        ctx.fillText(title, width / 2, height / 2 - 30);
+        let title;
+        let first;
+        let second;
+        let speedColor = "#94a3b8";
 
-        ctx.fillStyle = "#cbd5e1";
-        ctx.font = "500 18px 'Segoe UI', sans-serif";
-        ctx.fillText("R — реванш    Esc — в меню", width / 2, height / 2 + 42);
+        if (pilotState === "falling") {
+            title = "СВОБОДНОЕ ПАДЕНИЕ";
+            first = "Пробел — раскрыть парашют";
+            second = "A / D — планирование";
+            speedColor = tooFast ? "#f87171" : "#4ade80";
+        } else if (pilotState === "parachuting") {
+            title = "ПАРАШЮТ";
+            first = "A / D — управление";
+            second = "Пробел — сложить · E — в аппарат";
+            speedColor = "#4ade80";
+        } else if (pilotState === "onground") {
+            title = "ЛЁТЧИК НА ЗЕМЛЕ";
+            first = "Бегите к башне-маяку";
+            second = "E — вернуться в аппарат";
+        } else {
+            title = "ВОЗРОЖДЕНИЕ";
+            first = "Аппарат разбит";
+            second = "Новый аппарат у башни";
+        }
+
+        ctx.textAlign = "left";
+        ctx.font = "600 12px 'Segoe UI', sans-serif";
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText(title, x + 14, y + 19);
+
+        ctx.fillStyle = "#e2e8f0";
+        ctx.fillText(first, x + 14, y + 39);
+        ctx.fillStyle = "#7dd3fc";
+        ctx.fillText(second, x + 14, y + 57);
+
+        if (pilotState === "falling" || pilotState === "parachuting") {
+            ctx.fillStyle = speedColor;
+            ctx.fillText(
+                `Снижение: ${Math.round(vy)} / норма ${Math.round(safe)}`,
+                x + 14,
+                y + 77);
+        }
+    }
+
+    function handleEvents(game, state) {
+        const yourSlot = state.yourSlot || 0;
+
+        for (const event of state.events || []) {
+            const color = slotColor(event.slot, yourSlot);
+
+            switch (event.type) {
+                case "shot":
+                    spawnParticles(game, event.x, event.y, 3, color, 90, 0.18, 2.5);
+                    break;
+                case "hit":
+                    spawnParticles(game, event.x, event.y, 10, "#fbbf24", 170, 0.35, 3);
+                    break;
+                case "explosion":
+                    spawnParticles(game, event.x, event.y, 34, "#fb923c", 300, 0.8, 4.5);
+                    spawnParticles(game, event.x, event.y, 12, "#fde68a", 180, 0.6, 3.5);
+                    break;
+                case "crash":
+                    spawnParticles(game, event.x, event.y, 24, "#94a3b8", 220, 0.7, 4);
+                    break;
+                case "boost":
+                    spawnParticles(game, event.x, event.y, 12, "#22d3ee", 180, 0.45, 3);
+                    break;
+                case "dash":
+                    spawnParticles(game, event.x, event.y, 10, "#a7f3d0", 220, 0.35, 3);
+                    break;
+                case "respawn":
+                case "towerReached":
+                    spawnParticles(game, event.x, event.y, 18, "#facc15", 150, 0.6, 3.5);
+                    break;
+                case "reloadStarted":
+                    spawnParticles(game, event.x, event.y, 4, "#facc15", 60, 0.3, 2.5);
+                    break;
+                case "reloadFinished":
+                    spawnParticles(game, event.x, event.y, 8, "#e2e8f0", 100, 0.35, 2.5);
+                    break;
+                case "eject":
+                case "reenter":
+                    spawnParticles(game, event.x, event.y, 10, color, 130, 0.4, 3);
+                    break;
+                case "landed":
+                    spawnParticles(game, event.x, event.y, 8, "#4ade80", 110, 0.4, 2.5);
+                    break;
+                case "parachuteOpened":
+                    spawnParticles(game, event.x, event.y - 26, 14, "#e2e8f0", 130, 0.5, 3);
+                    break;
+                case "parachuteClosed":
+                    spawnParticles(game, event.x, event.y - 26, 8, "#94a3b8", 90, 0.35, 2.5);
+                    break;
+                case "pilotKilled":
+                    spawnParticles(game, event.x, event.y, 22, "#f87171", 210, 0.6, 3.5);
+                    spawnParticles(game, event.x, event.y, 8, "#fecaca", 120, 0.45, 2.5);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    function spawnParticles(game, x, y, count, color, speed, life, size) {
+        for (let i = 0; i < count; i += 1) {
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = speed * (0.25 + Math.random() * 0.75);
+            const particleLife = life * (0.6 + Math.random() * 0.4);
+
+            game.particles.push({
+                x,
+                y,
+                vx: Math.cos(angle) * velocity,
+                vy: Math.sin(angle) * velocity,
+                life: particleLife,
+                maxLife: particleLife,
+                alpha: 1,
+                size: size * (0.6 + Math.random() * 0.4),
+                color
+            });
+        }
+
+        if (game.particles.length > 600) {
+            game.particles.splice(0, game.particles.length - 600);
+        }
+    }
+
+    function updateParticles(game, dt) {
+        for (let i = game.particles.length - 1; i >= 0; i -= 1) {
+            const particle = game.particles[i];
+            particle.life -= dt;
+
+            if (particle.life <= 0) {
+                game.particles.splice(i, 1);
+                continue;
+            }
+
+            particle.x += particle.vx * dt;
+            particle.y += particle.vy * dt;
+            particle.vx *= Math.max(0, 1 - 3 * dt);
+            particle.vy *= Math.max(0, 1 - 3 * dt);
+            particle.alpha = particle.life / particle.maxLife;
+        }
     }
 
     function attachInput(game) {
@@ -513,13 +996,26 @@
                 event.preventDefault();
             }
 
-            if (event.code === "Escape" && !event.repeat) {
-                game.dotNetRef.invokeMethodAsync("ExitToMenu");
+            if (event.code === "Escape") {
+                event.preventDefault();
+
+                if (!event.repeat) {
+                    game.dotNetRef.invokeMethodAsync("TogglePause");
+                }
+
                 return;
             }
 
             if (event.code === "KeyR" && !event.repeat) {
-                game.restartPressed = true;
+                game.reloadPressed = true;
+            }
+
+            if (event.code === "KeyE" && !event.repeat) {
+                game.ejectPressed = true;
+            }
+
+            if (event.code === "Space" && !event.repeat) {
+                game.parachutePressed = true;
             }
 
             game.keys.add(event.code);
@@ -597,6 +1093,10 @@
         const canvas = game.canvas;
         const handler = game.handlers;
 
+        if (!handler) {
+            return;
+        }
+
         window.removeEventListener("keydown", handler.onKeyDown);
         window.removeEventListener("keyup", handler.onKeyUp);
         window.removeEventListener("blur", handler.onBlur);
@@ -608,7 +1108,7 @@
         canvas.removeEventListener("contextmenu", handler.onContextMenu);
     }
 
-    function start(dotNetRef, canvasId, playerKind) {
+    function start(dotNetRef, canvasId) {
         stop(canvasId);
 
         const canvas = document.getElementById(canvasId);
@@ -621,14 +1121,17 @@
             dotNetRef,
             canvas,
             ctx: canvas.getContext("2d"),
-            playerKind,
             keys: new Set(),
             mouse: { worldX: 800, worldY: 450, down: false },
             view: { worldWidth: 1600, worldHeight: 900, scale: 1, offsetX: 0, offsetY: 0 },
             cssWidth: 1,
             cssHeight: 1,
             running: true,
-            restartPressed: false,
+            reloadPressed: false,
+            ejectPressed: false,
+            parachutePressed: false,
+            lastTimestamp: 0,
+            particles: [],
             rafId: 0,
             handlers: {}
         };
@@ -651,8 +1154,37 @@
         games.delete(canvasId);
     }
 
+    async function copyText(text) {
+        if (!text) {
+            return;
+        }
+
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+        } catch (error) {
+            console.warn("MyaKBiplane: clipboard unavailable", error);
+        }
+
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+    }
+
     window.myakBiplane = {
         start,
-        stop
+        stop,
+        copyText,
+        getState: (canvasId) => {
+            const game = games.get(canvasId);
+            return game && game.state ? game.state : null;
+        }
     };
 })();

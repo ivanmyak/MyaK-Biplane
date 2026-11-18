@@ -203,24 +203,59 @@ h1 {
     color: #f8fafc;
 }
 
-.game-help {
+.game-meta {
     position: absolute;
+    top: 1rem;
     right: 1rem;
-    bottom: 1rem;
     z-index: 2;
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
-    gap: 0.4rem 0.9rem;
-    max-width: min(42rem, calc(100vw - 2rem));
-    padding: 0.55rem 0.75rem;
+    gap: 0.35rem 0.9rem;
+    padding: 0.45rem 0.7rem;
     border: 1px solid rgba(148, 163, 184, 0.16);
-    border-radius: 0.65rem;
+    border-radius: 0.55rem;
     background: rgba(2, 6, 23, 0.55);
     color: #94a3b8;
     font-size: 0.78rem;
     backdrop-filter: blur(8px);
     pointer-events: none;
+}
+
+.help-legend {
+    margin-top: 1.25rem;
+    text-align: left;
+}
+
+.help-legend .controls-grid {
+    margin-top: 0;
+}
+
+.help-legend-compact .controls-grid {
+    margin-top: 1rem;
+    gap: 0.65rem;
+}
+
+.help-legend-compact .controls-card {
+    padding: 0.7rem 0.8rem;
+}
+
+.help-legend-compact .controls-card h2 {
+    margin-bottom: 0.4rem;
+    font-size: 0.9rem;
+}
+
+.help-legend-compact .controls-card ul {
+    font-size: 0.82rem;
+    line-height: 1.65;
+}
+
+.help-note {
+    margin: 1rem 0 0;
+    color: #64748b;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    text-align: left;
 }
 
 #blazor-error-ui {
@@ -276,4 +311,289 @@ h1 {
 
 .loading-progress-text:after {
     content: var(--blazor-load-percentage-text, "Loading");
+}
+
+.step-title {
+    margin: 1.75rem 0 0.75rem;
+    font-size: 1.1rem;
+    letter-spacing: 0.01em;
+}
+
+.step-hint {
+    margin: 0.9rem 0 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
+.aircraft-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.85rem;
+}
+
+.aircraft-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 1rem;
+    background: rgba(15, 23, 42, 0.45);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.aircraft-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(56, 189, 248, 0.45);
+}
+
+.aircraft-card.selected {
+    border-color: var(--cyan);
+    background: rgba(56, 189, 248, 0.12);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35) inset;
+}
+
+.aircraft-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 0.7rem;
+    background: rgba(56, 189, 248, 0.2);
+    color: #7dd3fc;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.aircraft-badge-alt {
+    background: rgba(248, 113, 113, 0.2);
+    color: #fca5a5;
+}
+
+.aircraft-card strong {
+    font-size: 1.05rem;
+}
+
+.aircraft-desc {
+    color: var(--muted);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.button-ghost {
+    border-color: rgba(148, 163, 184, 0.25);
+    background: transparent;
+    color: #cbd5e1;
+}
+
+.button-ghost:hover {
+    background: rgba(148, 163, 184, 0.12);
+}
+
+.button:disabled,
+.button[disabled] {
+    cursor: not-allowed;
+    opacity: 0.45;
+    transform: none;
+}
+
+.field-label {
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.text-input {
+    width: 100%;
+    max-width: 16rem;
+    margin-top: 0.4rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 0.7rem;
+    background: rgba(2, 6, 23, 0.6);
+    color: #f8fafc;
+    font: inherit;
+    letter-spacing: 0.12em;
+}
+
+.text-input:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.room-code-input {
+    text-transform: uppercase;
+}
+
+.menu-error {
+    margin: 1rem 0 0;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    border-radius: 0.7rem;
+    background: rgba(248, 113, 113, 0.1);
+    color: #fecaca;
+    font-size: 0.9rem;
+}
+
+.game-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background: rgba(2, 6, 23, 0.58);
+    backdrop-filter: blur(3px);
+}
+
+.overlay-panel {
+    width: min(34rem, 100%);
+    max-height: calc(100vh - 2.5rem);
+    overflow-y: auto;
+    padding: clamp(1.4rem, 3vw, 2rem);
+    border: 1px solid var(--panel-border);
+    border-radius: 1.25rem;
+    background: var(--panel);
+    box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+.overlay-panel.compact {
+    width: min(24rem, 100%);
+}
+
+.overlay-panel h2 {
+    margin: 0;
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
+    letter-spacing: -0.02em;
+}
+
+.overlay-eyebrow {
+    margin: 0 0 0.5rem;
+    color: var(--cyan);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.overlay-text {
+    margin: 0.9rem 0 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+
+.overlay-notice {
+    margin: 0.9rem 0 0;
+    color: #facc15;
+    font-size: 0.9rem;
+}
+
+.overlay-notice.offer {
+    color: #7dd3fc;
+}
+
+.overlay-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.65rem;
+    margin-top: 1.4rem;
+}
+
+.room-code {
+    margin: 1.2rem auto 0;
+    padding: 0.6rem 1rem;
+    border: 1px dashed rgba(56, 189, 248, 0.5);
+    border-radius: 0.8rem;
+    background: rgba(56, 189, 248, 0.08);
+    color: #7dd3fc;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: clamp(1.8rem, 6vw, 2.6rem);
+    font-weight: 800;
+    letter-spacing: 0.3em;
+    text-indent: 0.3em;
+    user-select: all;
+}
+
+.score-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+    font-size: 2.6rem;
+    font-weight: 800;
+}
+
+.score-you {
+    color: var(--cyan);
+}
+
+.score-sep {
+    color: #475569;
+}
+
+.score-opponent {
+    color: var(--red);
+}
+
+.overlay-win {
+    color: #7dd3fc;
+}
+
+.overlay-loss {
+    color: #fca5a5;
+}
+
+.overlay-draw {
+    color: #e2e8f0;
+}
+
+.loading-dots {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+    margin-top: 1.2rem;
+}
+
+.loading-dots span {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--cyan);
+    animation: loading-pulse 1s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) {
+    animation-delay: 0.15s;
+}
+
+.loading-dots span:nth-child(3) {
+    animation-delay: 0.3s;
+}
+
+@keyframes loading-pulse {
+    0%,
+    100% {
+        opacity: 0.25;
+        transform: translateY(0);
+    }
+
+    50% {
+        opacity: 1;
+        transform: translateY(-0.2rem);
+    }
 }

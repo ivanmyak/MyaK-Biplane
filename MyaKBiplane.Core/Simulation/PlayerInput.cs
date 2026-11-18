@@ -33,6 +33,12 @@ public struct PlayerInput
     /// <summary>Нажата ли кнопка специальной способности.</summary>
     public bool Ability { get; set; }
 
-    /// <summary>Запрошен ли перезапуск матча.</summary>
-    public bool Restart { get; set; }
+    /// <summary>Запрошена ли ручная перезарядка биплана.</summary>
+    public bool Reload { get; set; }
+
+    /// <summary>Покинуть аппарат или забраться обратно, если аппарат рядом.</summary>
+    public bool Eject { get; set; }
+
+    /// <summary>Раскрыть или сложить парашют при свободном падении.</summary>
+    public bool Parachute { get; set; }
 }

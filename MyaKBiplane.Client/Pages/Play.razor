@@ -1,7 +1,8 @@
-@page "/play/{Kind}"
+@page "/play"
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject IConfiguration Configuration
 
 <PageTitle>@GameInfo.Title</PageTitle>
 
@@ -10,50 +11,242 @@
 
     <a class="back-link" href="/">← В меню</a>
 
-    <div class="game-help">
-        <span>Противник: бот</span>
-        <span>Матч до 5 уничтожений</span>
-        <span><kbd>R</kbd> — реванш</span>
-        <span><kbd>Esc</kbd> — меню</span>
-    </div>
+    @if (_room is not null && _room.Status != "waiting")
+    {
+        <div class="game-meta">
+            <span>@ModeLabel</span>
+            @if (!string.IsNullOrEmpty(_room.Code))
+            {
+                <span>Код: <strong>@_room.Code</strong></span>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_closedReason))
+    {
+        <div class="game-overlay">
+            <div class="overlay-panel">
+                <p class="overlay-eyebrow">Матч закрыт</p>
+                <h2>Соперник вышел</h2>
+                <p class="overlay-text">@_closedReason</p>
+                <div class="overlay-actions">
+                    <button class="button button-primary" @onclick="ExitToMenuAsync">В меню</button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="game-overlay">
+            <div class="overlay-panel">
+                <p class="overlay-eyebrow">Ошибка подключения</p>
+                <h2>Не удалось войти в матч</h2>
+                <p class="overlay-text">@_error</p>
+                <div class="overlay-actions">
+                    <button class="button button-primary" @onclick="ExitToMenuAsync">В меню</button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (_room is null)
+    {
+        <div class="game-overlay">
+            <div class="overlay-panel compact">
+                <p class="overlay-eyebrow">Подключение</p>
+                <h2>Соединяемся с сервером…</h2>
+                <div class="loading-dots"><span></span><span></span><span></span></div>
+            </div>
+        </div>
+    }
+    else if (_room.Status == "waiting")
+    {
+        <div class="game-overlay">
+            <div class="overlay-panel">
+                <p class="overlay-eyebrow">Комната создана</p>
+                <h2>Ожидание соперника</h2>
+                <p class="overlay-text">
+                    Передайте сопернику код комнаты. Второй игрок выбирает свой аппарат
+                    на стартовом экране.
+                </p>
+                <div class="room-code">@_room.Code</div>
+                <div class="overlay-actions">
+                    <button class="button button-secondary" @onclick="CopyCodeAsync">
+                        Скопировать код
+                    </button>
+                    <button class="button button-ghost" @onclick="ExitToMenuAsync">Отменить</button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (_room.Status == "paused" || _room.Status == "finished")
+    {
+        <div class="game-overlay">
+            <div class="overlay-panel">
+                @if (_room.Status == "finished")
+                {
+                    <p class="overlay-eyebrow">Матч завершён</p>
+                    <h2 class="@OutcomeClass">@OutcomeTitle</h2>
+                    <div class="score-line">
+                        <span class="score-you">@_yourScore</span>
+                        <span class="score-sep">:</span>
+                        <span class="score-opponent">@_opponentScore</span>
+                    </div>
+                    <p class="overlay-text">
+                        @(_opponentIsBot ? "Счёт против бота" : "Счёт по уничтожениям")
+                    </p>
+                }
+                else
+                {
+                    <p class="overlay-eyebrow">Пауза</p>
+                    <h2>Игра приостановлена</h2>
+                    <p class="overlay-text">@PauseText</p>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_room.Notice))
+                {
+                    <p class="overlay-notice">@_room.Notice</p>
+                }
+
+                <HelpLegend Compact="true" />
+
+                @if (_room.RematchOfferedByOpponent)
+                {
+                    <p class="overlay-notice offer">
+                        Соперник предлагает реванш.
+                    </p>
+                }
+                else if (_room.RematchOfferedByYou)
+                {
+                    <p class="overlay-notice">Ожидание ответа соперника…</p>
+                }
+
+                <div class="overlay-actions">
+                    @if (_room.Status == "paused")
+                    {
+                        <button class="button button-primary"
+                                disabled="@_busy"
+                                @onclick="ResumeAsync">
+                            Продолжить
+                        </button>
+                    }
+
+                    @if (_room.RematchOfferedByOpponent)
+                    {
+                        <button class="button button-primary"
+                                disabled="@_busy"
+                                @onclick="() => RespondRematchAsync(true)">
+                            Принять реванш
+                        </button>
+                        <button class="button button-ghost"
+                                disabled="@_busy"
+                                @onclick="() => RespondRematchAsync(false)">
+                            Отказаться
+                        </button>
+                    }
+                    else if (!_room.RematchOfferedByYou)
+                    {
+                        <button class="button button-secondary"
+                                disabled="@_busy"
+                                @onclick="OfferRematchAsync">
+                            @(_room.Mode == "bot" ? "Реванш" : "Предложить реванш")
+                        </button>
+                    }
+
+                    <button class="button button-ghost"
+                            disabled="@_busy"
+                            @onclick="ExitToMenuAsync">
+                        В меню
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
     private const string CanvasId = "gameCanvas";
 
-    private DotNetObjectReference<Play>? _dotNetRef;
-    private GameSession? _session;
-    private PlaneKind _playerKind;
-    private double _lastTimestamp;
-    private bool _started;
+    private static readonly JsonSerializerOptions SnapshotOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
-    [Parameter]
-    public string Kind { get; set; } = "biplane";
+    private GameServerClient? _client;
+    private DotNetObjectReference<Play>? _dotNetRef;
+    private RoomInfo? _room;
+    private string? _error;
+    private string? _closedReason;
+    private string _latestSnapshot = string.Empty;
+    private PlaneKind _kind;
+    private bool _started;
+    private bool _busy;
+    private double _lastInputSent;
+    private int _sendingInput;
+    private bool _pendingReload;
+    private bool _pendingEject;
+    private bool _pendingParachute;
+    private int _winnerSlot = -1;
+    private int _yourScore;
+    private int _opponentScore;
+    private bool _opponentIsBot;
+
+    [SupplyParameterFromQuery(Name = "mode")]
+    public string? Mode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "kind")]
+    public string? Kind { get; set; }
+
+    [SupplyParameterFromQuery(Name = "code")]
+    public string? Code { get; set; }
+
+    private string ModeLabel => Mode switch
+    {
+        "host" => "Сетевая игра · хозяин комнаты",
+        "join" => "Сетевая игра · гость",
+        _ => "Игра с ботом"
+    };
+
+    private string OutcomeTitle => _winnerSlot < 0
+        ? "НИЧЬЯ"
+        : _room is not null && _winnerSlot == _room.YourSlot
+            ? "ПОБЕДА"
+            : "ПОРАЖЕНИЕ";
+
+    private string OutcomeClass => _winnerSlot < 0
+        ? "overlay-draw"
+        : _room is not null && _winnerSlot == _room.YourSlot
+            ? "overlay-win"
+            : "overlay-loss";
+
+    private string PauseText => _room is not null && _room.PausedBySlot == _room.YourSlot
+        ? "Вы поставили игру на паузу. Соперник тоже видит это окно."
+        : "Соперник поставил игру на паузу. Продолжить может любой из вас.";
 
     protected override void OnInitialized()
     {
-        _playerKind = Enum.TryParse<PlaneKind>(Kind, true, out var parsed)
+        _kind = Enum.TryParse<PlaneKind>(Kind, ignoreCase: true, out var parsed)
             ? parsed
             : PlaneKind.Biplane;
 
-        _session = new GameSession(_playerKind, Random.Shared.Next());
+        _client = new GameServerClient(Navigation, Configuration);
+        _client.RoomUpdated += OnRoomUpdated;
+        _client.SnapshotReceived += OnSnapshotReceived;
+        _client.RoomClosed += OnRoomClosed;
+        _client.ConnectionClosed += OnConnectionClosed;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _started || _session is null)
+        if (!firstRender || _started)
         {
             return;
         }
 
         _started = true;
         _dotNetRef = DotNetObjectReference.Create(this);
-
-        await JS.InvokeVoidAsync(
-            "myakBiplane.start",
-            _dotNetRef,
-            CanvasId,
-            _playerKind.ToString().ToLowerInvariant());
+        await JS.InvokeVoidAsync("myakBiplane.start", _dotNetRef, CanvasId);
+        await ConnectAndEnterAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
@@ -61,36 +254,94 @@
     /// </summary>
     /// <param name="timestamp">Метка времени requestAnimationFrame в миллисекундах.</param>
     /// <param name="input">Текущий ввод игрока.</param>
-    /// <returns>JSON-снимок состояния для отрисовки.</returns>
+    /// <returns>Последний JSON-снимок состояния.</returns>
     [JSInvokable]
-    public string Tick(double timestamp, PlayerInput input)
+    public string Tick(double timestamp, InputState input)
     {
-        if (_session is null)
+        if (_client is null || _room?.Status != "playing")
         {
-            return "{}";
+            _pendingReload = false;
+            _pendingEject = false;
+            _pendingParachute = false;
+            return _latestSnapshot;
         }
 
-        var deltaSeconds = _lastTimestamp <= 0d
-            ? 0f
-            : (float)Math.Clamp((timestamp - _lastTimestamp) / 1000d, 0d, 0.25d);
+        _pendingReload |= input.Reload;
+        _pendingEject |= input.Eject;
+        _pendingParachute |= input.Parachute;
 
-        _lastTimestamp = timestamp;
-        _session.Update(input, deltaSeconds);
-        return _session.CreateSnapshotJson();
+        // Разовые нажатия (R/E/Пробел) нельзя терять между кадрами отправки: клиент
+        // присылает их один раз, а ввод уходит на сервер примерно 30 раз в секунду.
+        var oneShot = _pendingReload || _pendingEject || _pendingParachute;
+
+        if ((oneShot || timestamp - _lastInputSent >= 33d)
+            && Interlocked.CompareExchange(ref _sendingInput, 1, 0) == 0)
+        {
+            _lastInputSent = timestamp;
+
+            var payload = oneShot
+                ? new InputState
+                {
+                    Thrust = input.Thrust,
+                    Turn = input.Turn,
+                    MoveX = input.MoveX,
+                    MoveY = input.MoveY,
+                    AimX = input.AimX,
+                    AimY = input.AimY,
+                    Fire = input.Fire,
+                    Ability = input.Ability,
+                    Reload = _pendingReload,
+                    Eject = _pendingEject,
+                    Parachute = _pendingParachute
+                }
+                : input;
+
+            _pendingReload = false;
+            _pendingEject = false;
+            _pendingParachute = false;
+            _ = SendInputAsync(payload);
+        }
+
+        return _latestSnapshot;
     }
 
     /// <summary>
-    /// Возвращает игрока в главное меню по нажатию Escape.
+    /// Переключает паузу по Escape.
     /// </summary>
     [JSInvokable]
-    public void ExitToMenu()
+    public async Task TogglePause()
     {
-        Navigation.NavigateTo("/");
+        if (_client is null || _room is null || _room.Status is not ("playing" or "paused"))
+        {
+            return;
+        }
+
+        await RunAsync(() => _client.TogglePauseAsync());
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        if (_client is not null)
+        {
+            _client.RoomUpdated -= OnRoomUpdated;
+            _client.SnapshotReceived -= OnSnapshotReceived;
+            _client.RoomClosed -= OnRoomClosed;
+            _client.ConnectionClosed -= OnConnectionClosed;
+
+            try
+            {
+                await _client.LeaveRoomAsync();
+            }
+            catch (Exception)
+            {
+                // Соединение уже могло закрыться.
+            }
+
+            await _client.DisposeAsync();
+            _client = null;
+        }
+
         if (_started)
         {
             try
@@ -105,4 +356,206 @@
 
         _dotNetRef?.Dispose();
     }
+
+    private async Task ConnectAndEnterAsync()
+    {
+        if (_client is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _client.ConnectAsync();
+
+            _room = Mode switch
+            {
+                "host" => await _client.CreateRoomAsync(KindName(_kind)),
+                "join" => await _client.JoinRoomAsync(Code ?? string.Empty, KindName(_kind)),
+                _ => await _client.CreateBotRoomAsync(KindName(_kind))
+            };
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private async Task SendInputAsync(InputState input)
+    {
+        try
+        {
+            await _client!.SendInputAsync(input);
+        }
+        catch (Exception exception)
+        {
+            _ = InvokeAsync(() =>
+            {
+                _error = exception.Message;
+                StateHasChanged();
+            });
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _sendingInput, 0);
+        }
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+
+        try
+        {
+            await action();
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task ResumeAsync() =>
+        _client is null ? Task.CompletedTask : RunAsync(() => _client.TogglePauseAsync());
+
+    private Task OfferRematchAsync() =>
+        _client is null ? Task.CompletedTask : RunAsync(() => _client.OfferRematchAsync());
+
+    private Task RespondRematchAsync(bool accept) =>
+        _client is null ? Task.CompletedTask : RunAsync(() => _client.RespondRematchAsync(accept));
+
+    private async Task CopyCodeAsync()
+    {
+        if (_room is null || string.IsNullOrEmpty(_room.Code))
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("myakBiplane.copyText", _room.Code);
+        }
+        catch (Exception)
+        {
+            // Буфер обмена может быть недоступен.
+        }
+    }
+
+    private async Task ExitToMenuAsync()
+    {
+        if (_client is not null)
+        {
+            try
+            {
+                await _client.LeaveRoomAsync();
+            }
+            catch (Exception)
+            {
+                // Соединение уже могло закрыться.
+            }
+        }
+
+        Navigation.NavigateTo("/");
+    }
+
+    private void OnRoomUpdated(RoomInfo info)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _room = info;
+            StateHasChanged();
+        });
+    }
+
+    private void OnSnapshotReceived(string json)
+    {
+        Interlocked.Exchange(ref _latestSnapshot, json);
+
+        GameSnapshot? snapshot;
+
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<GameSnapshot>(json, SnapshotOptions);
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        var yourSlot = snapshot.YourSlot;
+        var yourScore = snapshot.Scores.Length > yourSlot ? snapshot.Scores[yourSlot] : 0;
+        var opponentScore = snapshot.Scores.Length > 1 - yourSlot ? snapshot.Scores[1 - yourSlot] : 0;
+        var opponentIsBot = false;
+
+        foreach (var plane in snapshot.Planes)
+        {
+            if (plane.Slot != yourSlot && plane.IsBot)
+            {
+                opponentIsBot = true;
+                break;
+            }
+        }
+
+        if (snapshot.WinnerSlot == _winnerSlot
+            && yourScore == _yourScore
+            && opponentScore == _opponentScore
+            && opponentIsBot == _opponentIsBot)
+        {
+            return;
+        }
+
+        _winnerSlot = snapshot.WinnerSlot;
+        _yourScore = yourScore;
+        _opponentScore = opponentScore;
+        _opponentIsBot = opponentIsBot;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRoomClosed(string reason)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _closedReason = string.IsNullOrWhiteSpace(reason)
+                ? "Соперник покинул игру."
+                : reason;
+            _room = null;
+            StateHasChanged();
+        });
+    }
+
+    private void OnConnectionClosed(string reason)
+    {
+        if (!string.IsNullOrWhiteSpace(_closedReason))
+        {
+            return;
+        }
+
+        _ = InvokeAsync(() =>
+        {
+            _closedReason = string.IsNullOrWhiteSpace(reason)
+                ? "Соединение с сервером закрыто."
+                : reason;
+            _room = null;
+            StateHasChanged();
+        });
+    }
+
+    private static string KindName(PlaneKind kind) =>
+        kind == PlaneKind.Biplane ? "biplane" : "pterodactyl";
 }

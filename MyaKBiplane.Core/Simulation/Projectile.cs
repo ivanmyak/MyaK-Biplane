@@ -24,8 +24,7 @@ public sealed class Projectile
     /// </summary>
     /// <param name="id">Уникальный идентификатор снаряда.</param>
     /// <param name="kind">Тип снаряда.</param>
-    /// <param name="ownerId">Идентификатор владельца.</param>
-    /// <param name="ownerIsPlayer">Принадлежит ли снаряд игроку.</param>
+    /// <param name="ownerSlot">Слот владельца.</param>
     /// <param name="position">Начальная позиция.</param>
     /// <param name="velocity">Скорость снаряда.</param>
     /// <param name="damage">Урон при попадании.</param>
@@ -34,8 +33,7 @@ public sealed class Projectile
     public Projectile(
         int id,
         ProjectileKind kind,
-        int ownerId,
-        bool ownerIsPlayer,
+        int ownerSlot,
         Vector2 position,
         Vector2 velocity,
         float damage,
@@ -44,8 +42,7 @@ public sealed class Projectile
     {
         Id = id;
         Kind = kind;
-        OwnerId = ownerId;
-        OwnerIsPlayer = ownerIsPlayer;
+        OwnerSlot = ownerSlot;
         Position = position;
         Velocity = velocity;
         Damage = damage;
@@ -59,11 +56,8 @@ public sealed class Projectile
     /// <summary>Тип снаряда.</summary>
     public ProjectileKind Kind { get; }
 
-    /// <summary>Идентификатор владельца.</summary>
-    public int OwnerId { get; }
-
-    /// <summary>Принадлежит ли снаряд игроку.</summary>
-    public bool OwnerIsPlayer { get; }
+    /// <summary>Слот владельца.</summary>
+    public int OwnerSlot { get; }
 
     /// <summary>Текущая позиция.</summary>
     public Vector2 Position { get; internal set; }

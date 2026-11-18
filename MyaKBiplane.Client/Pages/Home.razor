@@ -8,49 +8,197 @@
         <p class="eyebrow">2D dogfight prototype</p>
         <h1>@GameInfo.Title</h1>
         <p class="subtitle">
-            Биплан против птеродактиля. Матч до 5 уничтожений, противник — бот.
+            Матч до 5 уничтожений. В центре карты — башня-маяк: аппараты появляются
+            по разные её стороны, а лётчик может катапультироваться и добраться до
+            башни за новым аппаратом.
         </p>
 
-        <div class="menu-actions">
-            <button class="button button-primary" @onclick="() => Start(PlaneKind.Biplane)">
-                Летать на биплане
-            </button>
-            <button class="button button-secondary" @onclick="() => Start(PlaneKind.Pterodactyl)">
-                Летать на птеродактиле
-            </button>
-        </div>
+        @if (_view == "main")
+        {
+            <div class="menu-actions">
+                <button class="button button-primary" @onclick="ShowBot">
+                    Игра с ботом
+                </button>
+                <button class="button button-secondary" @onclick="ShowOnline">
+                    Игра по сети
+                </button>
+                <button class="button button-ghost" @onclick="ShowHelp">
+                    Помощь
+                </button>
+            </div>
+        }
+        else if (_view == "bot")
+        {
+            <h2 class="step-title">Выберите аппарат</h2>
+            @AircraftPicker()
+            <p class="step-hint">Противник — бот на аппарате противоположного класса.</p>
+            <div class="menu-actions">
+                <button class="button button-primary" @onclick="StartBot">
+                    Начать бой с ботом
+                </button>
+                <button class="button button-ghost" @onclick="BackToMain">Назад</button>
+            </div>
+        }
+        else if (_view == "online")
+        {
+            <h2 class="step-title">Сетевая игра в одной сети</h2>
+            <p class="step-hint">
+                Создайте комнату и передайте код сопернику. Второй игрок выбирает
+                свой аппарат — классы могут совпадать.
+            </p>
+            <div class="menu-actions">
+                <button class="button button-primary" @onclick="ShowHost">
+                    Создать комнату
+                </button>
+                <button class="button button-secondary" @onclick="ShowJoin">
+                    Присоединиться по коду
+                </button>
+                <button class="button button-ghost" @onclick="BackToMain">Назад</button>
+            </div>
+        }
+        else if (_view == "host")
+        {
+            <h2 class="step-title">Комната: выберите свой аппарат</h2>
+            @AircraftPicker()
+            <p class="step-hint">После создания комнаты покажите сопернику её код.</p>
+            <div class="menu-actions">
+                <button class="button button-primary" @onclick="StartHost">
+                    Создать комнату
+                </button>
+                <button class="button button-ghost" @onclick="ShowOnline">Назад</button>
+            </div>
+        }
+        else if (_view == "join")
+        {
+            <h2 class="step-title">Присоединение к комнате</h2>
+            <label class="field-label" for="room-code">Код комнаты</label>
+            <input id="room-code"
+                   class="text-input room-code-input"
+                   maxlength="6"
+                   autocomplete="off"
+                   @bind="_joinCode"
+                   @bind:event="oninput" />
+            <h2 class="step-title">Выберите свой аппарат</h2>
+            @AircraftPicker()
+            <div class="menu-actions">
+                <button class="button button-primary"
+                        disabled="@(!CanJoin)"
+                        @onclick="StartJoin">
+                    Войти в комнату
+                </button>
+                <button class="button button-ghost" @onclick="ShowOnline">Назад</button>
+            </div>
+        }
 
-        <div class="controls-grid">
-            <article class="controls-card">
-                <h2>Биплан</h2>
-                <ul>
-                    <li><kbd>W</kbd> / <kbd>S</kbd> — тяга вперёд / назад</li>
-                    <li><kbd>A</kbd> / <kbd>D</kbd> — поворот</li>
-                    <li><kbd>ЛКМ</kbd> или <kbd>F</kbd> — огонь</li>
-                    <li><kbd>Пробел</kbd> — ускорение</li>
-                </ul>
-            </article>
+        else if (_view == "help")
+        {
+            <h2 class="step-title">Помощь</h2>
+            <p class="step-hint">
+                Управление, правила боя и спасение лётчика. Эта же легенда
+                открывается на паузе по <kbd>Esc</kbd>.
+            </p>
+            <HelpLegend />
+            <div class="menu-actions">
+                <button class="button button-primary" @onclick="BackToMain">Назад</button>
+            </div>
+        }
 
-            <article class="controls-card">
-                <h2>Птеродактиль</h2>
-                <ul>
-                    <li><kbd>WASD</kbd> — движение</li>
-                    <li><kbd>Мышь</kbd> — прицел</li>
-                    <li><kbd>ЛКМ</kbd> — зарядить и бросить копьё</li>
-                    <li><kbd>Пробел</kbd> — рывок</li>
-                </ul>
-            </article>
-        </div>
-
-        <p class="footnote">
-            <kbd>R</kbd> — реванш после матча, <kbd>Esc</kbd> — выход в меню.
-        </p>
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <p class="menu-error">@_error</p>
+        }
     </section>
 </main>
 
 @code {
-    private void Start(PlaneKind kind)
+    private string _view = "main";
+    private PlaneKind _kind = PlaneKind.Biplane;
+    private string _joinCode = string.Empty;
+    private string? _error;
+
+    private bool CanJoin => _joinCode.Trim().Length >= 4;
+
+    private void ShowBot()
     {
-        Navigation.NavigateTo($"/play/{kind.ToString().ToLowerInvariant()}");
+        _view = "bot";
+        _error = null;
     }
+
+    private void ShowOnline()
+    {
+        _view = "online";
+        _error = null;
+    }
+
+    private void ShowHost()
+    {
+        _view = "host";
+        _error = null;
+    }
+
+    private void ShowJoin()
+    {
+        _view = "join";
+        _joinCode = string.Empty;
+        _error = null;
+    }
+
+    private void BackToMain()
+    {
+        _view = "main";
+        _error = null;
+    }
+
+    private void ShowHelp()
+    {
+        _view = "help";
+        _error = null;
+    }
+
+    private void StartBot()
+    {
+        Navigation.NavigateTo($"/play?mode=bot&kind={KindName(_kind)}");
+    }
+
+    private void StartHost()
+    {
+        Navigation.NavigateTo($"/play?mode=host&kind={KindName(_kind)}");
+    }
+
+    private void StartJoin()
+    {
+        var code = _joinCode.Trim().ToUpperInvariant();
+
+        if (code.Length < 4)
+        {
+            _error = "Введите код комнаты.";
+            return;
+        }
+
+        Navigation.NavigateTo(
+            $"/play?mode=join&kind={KindName(_kind)}&code={Uri.EscapeDataString(code)}");
+    }
+
+    private RenderFragment AircraftPicker() =>
+        @<div class="aircraft-grid">
+            <button class="aircraft-card @(_kind == PlaneKind.Biplane ? "selected" : string.Empty)"
+                    @onclick="() => _kind = PlaneKind.Biplane">
+                <span class="aircraft-badge">БИ</span>
+                <strong>Биплан</strong>
+                <span class="aircraft-desc">
+                    Скоростной самолёт. Магазин на 5 «горошин», перезарядка вручную.
+                </span>
+            </button>
+            <button class="aircraft-card @(_kind == PlaneKind.Pterodactyl ? "selected" : string.Empty)"
+                    @onclick="() => _kind = PlaneKind.Pterodactyl">
+                <span class="aircraft-badge aircraft-badge-alt">ПТ</span>
+                <strong>Птеродактиль</strong>
+                <span class="aircraft-desc">
+                    Манёвренный ящер. Заряжаемое копьё и рывок.
+                </span>
+            </button>
+        </div>;
+
+    private static string KindName(PlaneKind kind) =>
+        kind == PlaneKind.Biplane ? "biplane" : "pterodactyl";
 }

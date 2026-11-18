@@ -15,8 +15,44 @@ public sealed class GameBalance
     /// <summary>Высота игрового мира.</summary>
     public const float WorldHeight = 900f;
 
-    /// <summary>Отступ от границ мира, в пределах которого самолёт остаётся внутри арены.</summary>
+    /// <summary>Отступ от боковых и верхней границ мира.</summary>
     public const float WorldPadding = 32f;
+
+    /// <summary>Уровень земли: при касании незащищённый аппарат разбивается.</summary>
+    public const float GroundY = WorldHeight - 24f;
+
+    /// <summary>Ширина башни-маяка.</summary>
+    public const float TowerWidth = 48f;
+
+    /// <summary>Высота башни-маяка.</summary>
+    public const float TowerHeight = 250f;
+
+    /// <summary>Позиция башни по X — строго по центру карты.</summary>
+    public const float TowerX = WorldWidth * 0.5f;
+
+    /// <summary>Основание башни стоит на земле.</summary>
+    public const float TowerBaseY = GroundY;
+
+    /// <summary>Расстояние от башни до точки спавна аппарата по горизонтали.</summary>
+    public const float SpawnOffsetX = 270f;
+
+    /// <summary>Высота точки спавна аппарата.</summary>
+    public const float SpawnY = WorldHeight * 0.42f;
+
+    /// <summary>Отступ от края мира, из которого аппарат выезжает на спавн.</summary>
+    public const float SpawnEntryInset = 56f;
+
+    /// <summary>Длительность анимации выезда и разгона на спавне, в секундах.</summary>
+    public const float SpawnEntryDuration = 1.5f;
+
+    /// <summary>Скорость аппарата в момент передачи управления после выезда.</summary>
+    public const float SpawnEntrySpeed = 250f;
+
+    /// <summary>Угол набора высоты после спавна: нос смотрит на верхний угол соперника.</summary>
+    public const float SpawnApproachAngle = 0.22f;
+
+    /// <summary>Длительность неуязвимости и запрета атаки после спавна, в секундах.</summary>
+    public const float SpawnProtectionDuration = 3f;
 
     /// <summary>Максимальный запас здоровья любого класса.</summary>
     public const float MaxHealth = 100f;
@@ -26,6 +62,63 @@ public sealed class GameBalance
 
     /// <summary>Количество уничтожений, необходимое для победы в матче.</summary>
     public const int ScoreToWin = 5;
+
+    /// <summary>Радиус лётчика: 1.7 радиуса пули биплана.</summary>
+    public const float PilotRadius = 7.65f;
+
+    /// <summary>Радиус, в пределах которого лётчик считается добравшимся до башни.</summary>
+    public const float PilotReachRadius = 72f;
+
+    /// <summary>Радиус, в пределах которого лётчик может забраться обратно в аппарат.</summary>
+    public const float PilotReenterRadius = 46f;
+
+    /// <summary>Гравитация лётчика в свободном падении.</summary>
+    public const float PilotGravity = 900f;
+
+    /// <summary>Сопротивление воздуха при свободном падении.</summary>
+    public const float PilotFreefallDrag = 0.15f;
+
+    /// <summary>Предельная скорость свободного падения.</summary>
+    public const float PilotTerminalSpeed = 640f;
+
+    /// <summary>Боковое ускорение лётчика в свободном падении.</summary>
+    public const float PilotAirControlAcceleration = 220f;
+
+    /// <summary>Максимальная боковая скорость в свободном падении.</summary>
+    public const float PilotAirMaxSpeed = 170f;
+
+    /// <summary>Торможение при раскрытии парашюта.</summary>
+    public const float PilotParachuteBrake = 1500f;
+
+    /// <summary>Горизонтальное ускорение под куполом парашюта.</summary>
+    public const float PilotParachuteAcceleration = 260f;
+
+    /// <summary>Максимальная горизонтальная скорость под куполом.</summary>
+    public const float PilotParachuteMaxSpeed = 120f;
+
+    /// <summary>Максимальная скорость снижения под куполом.</summary>
+    public const float PilotParachuteFallSpeed = 105f;
+
+    /// <summary>Скорость бега лётчика по земле.</summary>
+    public const float PilotGroundSpeed = 110f;
+
+    /// <summary>Безопасная скорость касания земли: выше неё лётчик разбивается.</summary>
+    public const float PilotSafeLandingSpeed = 240f;
+
+    /// <summary>Скорость снижения при планировании без парашюта.</summary>
+    public const float PilotGlideFallSpeed = 205f;
+
+    /// <summary>Начальный импульс катапультирования вверх.</summary>
+    public const float PilotEjectImpulse = 240f;
+
+    /// <summary>Гравитация бесхозного аппарата, чтобы он мог разбиться.</summary>
+    public const float AbandonedGravity = 260f;
+
+    /// <summary>Сопротивление воздуха для бесхозного аппарата.</summary>
+    public const float AbandonedDrag = 0.35f;
+
+    /// <summary>Максимальная скорость бесхозного аппарата.</summary>
+    public const float AbandonedMaxSpeed = 720f;
 
     /// <summary>Параметры биплана.</summary>
     public BiplaneBalance Biplane { get; init; } = new();
@@ -72,8 +165,17 @@ public sealed class BiplaneBalance
     /// <summary>Время жизни пули в секундах.</summary>
     public float BulletLifetime { get; init; } = 1.5f;
 
-    /// <summary>Радиус пули для проверки попадания.</summary>
-    public float BulletRadius { get; init; } = 5f;
+    /// <summary>Радиус пули-«горошины» для проверки попадания и отрисовки.</summary>
+    public float BulletRadius { get; init; } = 4.5f;
+
+    /// <summary>Количество патронов в магазине биплана.</summary>
+    public int MagazineSize { get; init; } = 5;
+
+    /// <summary>
+    /// Длительность ручной перезарядки биплана.
+    /// В 2.5 раза длиннее полной зарядки копья птеродактиля (2 секунды).
+    /// </summary>
+    public float ReloadDuration { get; init; } = 2.5f * 2f;
 
     /// <summary>Множитель скорости во время ускорения.</summary>
     public float BoostMultiplier { get; init; } = 1.5f;
