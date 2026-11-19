@@ -27,24 +27,65 @@ GitHub Pages раздаёт только статические файлы, по
 заблокирует подключение к `http://` как mixed content. Прокси/хостинг должен поддерживать
 WebSocket — SignalR использует его для соединения.
 
-### Вариант A. Render (проще всего)
+### Вариант A. Fly.io (выбранный)
+
+В корне репозитория лежит `fly.toml`. Он собирает `MyaKBiplane.Server/Dockerfile`,
+слушает внутренний порт `8080`, включает HTTPS и health-check `/health`.
+
+```powershell
+# Установка CLI (один раз).
+iwr https://fly.io/install.ps1 -useb | iex
+$flyctl = "$env:USERPROFILE\.fly\bin\flyctl.exe"
+
+# Вход: откройте предложенную ссылку в браузере.
+& $flyctl auth login
+
+# Приложение создаётся один раз.
+& $flyctl apps create myak-biplane-server
+
+# Разрешить запросы с GitHub Pages.
+& $flyctl secrets set Cors__AllowedOrigins__0=https://ivanmyak.github.io --app myak-biplane-server
+
+# Деплой из корня репозитория.
+& $flyctl deploy --app myak-biplane-server --ha=false --yes
+```
+
+Адрес приложения: `https://myak-biplane-server.fly.dev`.
+Проверка: `https://myak-biplane-server.fly.dev/health` → `{"status":"ok"}`.
+
+`--ha=false` создаёт одну машину вместо двух — для игры этого достаточно и дешевле.
+Комнаты и матчи хранятся в памяти процесса, поэтому несколько машин без sticky-сессий
+не подойдут: оставляйте одну.
+
+Регион задан в `fly.toml` (`primary_region = "arn"`, Стокгольм). Некоторые старые
+регионы, например `waw`, Fly.io закрыл для новых приложений — при ошибке
+`Region ... is deprecated` выберите регион из подсказки в тексте ошибки.
+
+При `min_machines_running = 0` машина засыпает без трафика и просыпается на первый
+запрос; для постоянной готовности поставьте `min_machines_running = 1`.
+
+Логи сервер пишет в `/app/Data/Logs` внутри контейнера. Это временный диск машины:
+после перезапуска файлы теряются. Если логи нужны надолго, создайте volume
+(`fly volumes create myak-data --size 1 --region arn`) и смонтируйте его в `fly.toml`:
+
+```toml
+[mounts]
+  source = "myak-data"
+  destination = "/app/Data"
+```
+
+Бесплатный trial на Fly.io действует ограниченное время. По его окончании нужно
+добавить способ оплаты, иначе приложение остановят.
+
+### Вариант B. Render
 
 1. Создайте **New → Web Service** и подключите репозиторий `ivanmyak/MyaK-Biplane`.
-2. Укажите:
-   - **Language**: Docker;
-   - **Dockerfile Path**: `MyaKBiplane.Server/Dockerfile`;
-   - **Docker Context**: `.` (корень репозитория);
-   - **Health Check Path**: `/health`.
-3. В **Environment** добавьте:
-   - `Cors__AllowedOrigins__0` = `https://ivanmyak.github.io`;
-   - если платформа требует свой порт — `PORT` = `8080`.
-4. Задеплойте и скопируйте адрес вида `https://myak-biplane.onrender.com`.
-5. Проверьте: `https://myak-biplane.onrender.com/health` должен вернуть `{"status":"ok"}`.
+2. Укажите **Language**: Docker, **Dockerfile Path**: `MyaKBiplane.Server/Dockerfile`,
+   **Docker Context**: `.` (корень репозитория), **Health Check Path**: `/health`.
+3. В **Environment** добавьте `Cors__AllowedOrigins__0` = `https://ivanmyak.github.io`.
+4. Задеплойте и проверьте `https://myak-biplane.onrender.com/health`.
 
-Бесплатные инстансы Render засыпают без трафика — первый запуск может занять время.
-WebSocket на Render поддерживается.
-
-### Вариант B. Свой VPS с Docker и Caddy
+### Вариант C. Свой VPS с Docker и Caddy
 
 ```bash
 git clone https://github.com/ivanmyak/MyaK-Biplane.git
@@ -90,7 +131,7 @@ game.example.com {
    переменную:
    - **Name**: `SERVER_BASE_URL`;
    - **Value**: публичный HTTPS-адрес сервера без завершающего слэша и без `/hubs`,
-     например `https://myak-biplane.onrender.com`.
+     например `https://myak-biplane-server.fly.dev`.
 4. Смержите изменения в `master` или запустите workflow вручную:
    **Actions → Deploy client to GitHub Pages → Run workflow**.
 

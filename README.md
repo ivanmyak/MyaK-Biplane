@@ -182,10 +182,18 @@ dotnet test MyaKBiplane.Tests/MyaKBiplane.Tests.csproj
 
 Пошаговая инструкция: [`docs/deployment.md`](docs/deployment.md). Коротко:
 
-1. Поднимите сервер и проверьте `https://<сервер>/health`.
+1. Задеплойте сервер на Fly.io из корня репозитория (`fly.toml` уже готов):
+
+   ```powershell
+   $flyctl = "$env:USERPROFILE\.fly\bin\flyctl.exe"
+   & $flyctl auth login
+   & $flyctl deploy --app myak-biplane-server --ha=false --yes
+   ```
+
+   Адрес будет `https://myak-biplane-server.fly.dev`, health-check — `/health`.
 2. **Settings → Pages → Source = GitHub Actions**.
 3. В **Settings → Secrets and variables → Actions → Variables** создайте
-   `SERVER_BASE_URL` с адресом сервера.
+   `SERVER_BASE_URL` = `https://myak-biplane-server.fly.dev`.
 4. Запустите workflow **Deploy client to GitHub Pages** (или смержите в `master`).
 
 Адрес игры: `https://ivanmyak.github.io/MyaK-Biplane/`.
