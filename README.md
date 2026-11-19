@@ -24,6 +24,7 @@
   Бот принимает реванш сам.
 - Отдельный экран «Помощь» в меню вместо постоянной панели подсказок в бою.
 - Blazor WASM клиент с Canvas: меню, HUD, частицы, экраны ожидания/паузы/победы.
+- Светлая и тёмная темы интерфейса с переключателем в главном меню и сохранением выбора.
 - Docker-оркестрация для release и локального debug.
 - Точечные тесты ядра.
 
@@ -172,6 +173,22 @@ dotnet test MyaKBiplane.Tests/MyaKBiplane.Tests.csproj
 поражение лётчика снарядом, возврат в аппарат, возрождение у башни, одинаковые классы
 в сетевом матче, магазин и ручная перезарядка, повторное ускорение после кулдауна,
 завершение матча после 5 уничтожений, состав снимка и детерминизм симуляции.
+
+## Публикация в GitHub Pages
+
+На GitHub Pages выкладывается только статический клиент `MyaKBiplane.Client`. Сервер
+`MyaKBiplane.Server` размещается отдельно на Docker-хостинге с HTTPS и WebSocket — без
+него не работает ни сетевой режим, ни матч с ботом.
+
+Пошаговая инструкция: [`docs/deployment.md`](docs/deployment.md). Коротко:
+
+1. Поднимите сервер и проверьте `https://<сервер>/health`.
+2. **Settings → Pages → Source = GitHub Actions**.
+3. В **Settings → Secrets and variables → Actions → Variables** создайте
+   `SERVER_BASE_URL` с адресом сервера.
+4. Запустите workflow **Deploy client to GitHub Pages** (или смержите в `master`).
+
+Адрес игры: `https://ivanmyak.github.io/MyaK-Biplane/`.
 
 ## Docker
 
