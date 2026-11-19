@@ -4,14 +4,39 @@
     const games = new Map();
     const pilotRadius = 7.65;
 
+    // Дневная палитра в духе пиксельного концепта: насыщенное небо,
+    // белые облака, зелёная трава с коричневой землёй и сине-красная башня.
+    const palette = {
+        skyTop: "#0a9ad8",
+        skyMiddle: "#16b9ec",
+        skyBottom: "#4bd6f6",
+        cloud: "#f0feff",
+        treeLine: "rgba(52, 112, 76, 0.5)",
+        grass: "#57c62c",
+        grassLight: "#8ae650",
+        grassDark: "#2f8c1c",
+        dirtTop: "#a87446",
+        dirtBottom: "#5f3d22",
+        dirtSpeck: "rgba(62, 38, 20, 0.35)",
+        towerLeft: "#1b7fc4",
+        towerLeftLight: "#3fa0dd",
+        towerRight: "#d9302f",
+        towerRightLight: "#ef5b56",
+        towerBase: "#eaf3f7",
+        beacon: "#f2fdff",
+        slot0: "#1b7fc4",
+        slot1: "#d9302f",
+        ink: "rgba(4, 18, 31, 0.68)"
+    };
+
     const clouds = [];
-    for (let i = 0; i < 22; i += 1) {
+    for (let i = 0; i < 14; i += 1) {
         clouds.push({
             x: Math.random() * 1600,
             y: 60 + Math.random() * 780,
             radius: 40 + Math.random() * 90,
             speed: 3 + Math.random() * 9,
-            alpha: 0.04 + Math.random() * 0.09
+            alpha: 0.22 + Math.random() * 0.18
         });
     }
 
@@ -146,7 +171,7 @@
     }
 
     function slotColor(slot, yourSlot) {
-        return slot === yourSlot ? "#38bdf8" : "#f87171";
+        return slot === yourSlot ? palette.slot0 : palette.slot1;
     }
 
     function draw(game, state) {
@@ -156,9 +181,9 @@
         const height = game.cssHeight;
 
         const sky = ctx.createLinearGradient(0, 0, 0, height);
-        sky.addColorStop(0, "#071a32");
-        sky.addColorStop(0.55, "#0b2745");
-        sky.addColorStop(1, "#123b5c");
+        sky.addColorStop(0, palette.skyTop);
+        sky.addColorStop(0.55, palette.skyMiddle);
+        sky.addColorStop(1, palette.skyBottom);
         ctx.fillStyle = sky;
         ctx.fillRect(0, 0, width, height);
 
@@ -230,7 +255,7 @@
             const y = cloud.y;
 
             ctx.globalAlpha = cloud.alpha;
-            ctx.fillStyle = "#dbeafe";
+            ctx.fillStyle = palette.cloud;
             ctx.beginPath();
             ctx.ellipse(x, y, cloud.radius, cloud.radius * 0.42, 0, 0, Math.PI * 2);
             ctx.ellipse(x + cloud.radius * 0.5, y - cloud.radius * 0.12, cloud.radius * 0.7, cloud.radius * 0.34, 0, 0, Math.PI * 2);
@@ -243,37 +268,59 @@
 
     function drawGround(ctx, state, view) {
         const groundY = state.groundY || (view.worldHeight - 24);
-        const gradient = ctx.createLinearGradient(0, groundY, 0, view.worldHeight);
-        gradient.addColorStop(0, "#123a26");
-        gradient.addColorStop(1, "#071b12");
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, groundY, view.worldWidth, view.worldHeight - groundY);
+        const groundHeight = Math.max(12, view.worldHeight - groundY);
+        const grassHeight = Math.max(6, Math.min(12, groundHeight * 0.4));
 
-        ctx.strokeStyle = "rgba(74, 222, 128, 0.35)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(0, groundY);
-        ctx.lineTo(view.worldWidth, groundY);
-        ctx.stroke();
+        // Лес на горизонте — тёмно-зелёный силуэт, как в концепте.
+        ctx.fillStyle = palette.treeLine;
+        for (let x = -12; x < view.worldWidth + 24; x += 22) {
+            const step = Math.floor((x + 12) / 22);
+            const height = 24 + ((step * 7) % 18);
 
-        ctx.strokeStyle = "rgba(74, 222, 128, 0.12)";
-        ctx.lineWidth = 1;
-
-        for (let x = 0; x < view.worldWidth; x += 46) {
             ctx.beginPath();
-            ctx.moveTo(x, groundY + 8);
-            ctx.lineTo(x + 18, groundY + 26);
-            ctx.stroke();
+            ctx.moveTo(x, groundY);
+            ctx.lineTo(x + 11, groundY - height);
+            ctx.lineTo(x + 22, groundY);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        const dirt = ctx.createLinearGradient(0, groundY, 0, view.worldHeight);
+        dirt.addColorStop(0, palette.dirtTop);
+        dirt.addColorStop(1, palette.dirtBottom);
+        ctx.fillStyle = dirt;
+        ctx.fillRect(0, groundY, view.worldWidth, groundHeight);
+
+        ctx.fillStyle = palette.grass;
+        ctx.fillRect(0, groundY, view.worldWidth, grassHeight);
+        ctx.fillStyle = palette.grassLight;
+        ctx.fillRect(0, groundY, view.worldWidth, 3);
+        ctx.fillStyle = palette.grassDark;
+        ctx.fillRect(0, groundY + grassHeight - 2, view.worldWidth, 2);
+
+        // Травинки над кромкой.
+        ctx.fillStyle = palette.grassLight;
+        for (let x = 4; x < view.worldWidth; x += 18) {
+            const height = 2 + (Math.floor(x / 18) % 3);
+            ctx.fillRect(x, groundY - height, 2, height);
+        }
+
+        // Камешки в почве.
+        ctx.fillStyle = palette.dirtSpeck;
+        const speckZone = Math.max(1, groundHeight - grassHeight - 8);
+        for (let x = 10; x < view.worldWidth; x += 34) {
+            const y = groundY + grassHeight + 4 + (Math.floor(x / 34) * 13 % speckZone);
+            ctx.fillRect(x, y, 3, 3);
         }
     }
 
     function drawWorldBorder(ctx, view) {
         ctx.lineWidth = 4;
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.22)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
         ctx.strokeRect(2, 2, view.worldWidth - 4, view.worldHeight - 4);
 
         ctx.lineWidth = 1;
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.08)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
         for (let x = 100; x < view.worldWidth; x += 100) {
             ctx.beginPath();
             ctx.moveTo(x, 0);
@@ -306,8 +353,8 @@
 
         ctx.save();
 
-        ctx.globalAlpha = 0.18;
-        ctx.fillStyle = "#facc15";
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = palette.beacon;
         ctx.beginPath();
         ctx.moveTo(cx - 8, top - 10);
         ctx.lineTo(cx + 8, top - 10);
@@ -318,7 +365,7 @@
         ctx.globalAlpha = 1;
 
         // Левая половина — цвет первого слота.
-        ctx.fillStyle = "#0ea5e9";
+        ctx.fillStyle = palette.towerLeft;
         ctx.beginPath();
         ctx.moveTo(cx - width / 2, base);
         ctx.lineTo(cx - shoulder, top);
@@ -328,7 +375,7 @@
         ctx.fill();
 
         // Правая половина — цвет второго слота.
-        ctx.fillStyle = "#ef4444";
+        ctx.fillStyle = palette.towerRight;
         ctx.beginPath();
         ctx.moveTo(cx + width / 2, base);
         ctx.lineTo(cx + shoulder, top);
@@ -337,14 +384,33 @@
         ctx.closePath();
         ctx.fill();
 
-        ctx.strokeStyle = "rgba(2, 6, 23, 0.55)";
+        // Светлые блики по краям, как на башне концепта.
+        ctx.fillStyle = palette.towerLeftLight;
+        ctx.beginPath();
+        ctx.moveTo(cx - width / 2 + 3, base);
+        ctx.lineTo(cx - shoulder + 3, top + 6);
+        ctx.lineTo(cx - shoulder + 8, top + 6);
+        ctx.lineTo(cx - width / 2 + 8, base);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = palette.towerRightLight;
+        ctx.beginPath();
+        ctx.moveTo(cx + width / 2 - 3, base);
+        ctx.lineTo(cx + shoulder - 3, top + 6);
+        ctx.lineTo(cx + shoulder - 8, top + 6);
+        ctx.lineTo(cx + width / 2 - 8, base);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = palette.ink;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(cx, top);
         ctx.lineTo(cx, base);
         ctx.stroke();
 
-        ctx.strokeStyle = "rgba(248, 250, 252, 0.35)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.32)";
         ctx.lineWidth = 1;
 
         for (let y = top + 26; y < base - 10; y += 34) {
@@ -354,26 +420,109 @@
             ctx.stroke();
         }
 
-        ctx.fillStyle = "rgba(2, 6, 23, 0.55)";
+        // Белый цоколь башни.
+        ctx.fillStyle = palette.towerBase;
         ctx.fillRect(cx - width / 2 - 7, base - 12, width + 14, 12);
+        ctx.strokeStyle = palette.ink;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx - width / 2 - 7, base - 12, width + 14, 12);
 
-        ctx.shadowColor = "rgba(250, 204, 21, 0.9)";
-        ctx.shadowBlur = 26 * pulse;
-        ctx.fillStyle = `rgba(250, 204, 21, ${0.65 + pulse * 0.35})`;
+        ctx.shadowColor = "rgba(255, 255, 255, 0.85)";
+        ctx.shadowBlur = 24 * pulse;
+        ctx.fillStyle = `rgba(236, 252, 255, ${0.7 + pulse * 0.3})`;
         ctx.beginPath();
         ctx.arc(cx, top - 8, 10 + pulse * 2, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        ctx.fillStyle = "#fef9c3";
+        ctx.fillStyle = "#ffffff";
         ctx.beginPath();
         ctx.arc(cx, top - 8, 4, 0, Math.PI * 2);
         ctx.fill();
 
+        // Сетка на сфере маяка.
+        ctx.fillStyle = "rgba(24, 64, 92, 0.5)";
+        for (let dy = -4; dy <= 4; dy += 4) {
+            for (let dx = -4; dx <= 4; dx += 4) {
+                if (dx * dx + dy * dy > 16) {
+                    continue;
+                }
+
+                ctx.beginPath();
+                ctx.arc(cx + dx, top - 8 + dy, 0.9, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
         ctx.font = "700 11px 'Segoe UI', sans-serif";
         ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(226, 232, 240, 0.65)";
-        ctx.fillText("МАЯК", cx, top - 26);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(6, 26, 40, 0.65)";
+        ctx.strokeText("МАЯК", cx, top - 28);
+        ctx.fillStyle = "#f4fcff";
+        ctx.fillText("МАЯК", cx, top - 28);
+
+        // Счёт матча — прямо на башне, а не отдельной плашкой в углу экрана.
+        drawTowerScore(ctx, state, cx, top + height * 0.34);
+
+        ctx.restore();
+    }
+
+    function drawTowerScore(ctx, state, cx, y) {
+        const scores = state.scores || [0, 0];
+        const yourSlot = state.yourSlot || 0;
+        const yourScore = scores[yourSlot] || 0;
+        const opponentScore = scores[1 - yourSlot] || 0;
+        const opponentIsBot = (state.planes || []).some((plane) => plane.slot !== yourSlot && plane.isBot);
+        const caption = opponentIsBot ? "ВЫ · БОТ" : "ВЫ · СОПЕРНИК";
+
+        ctx.save();
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+
+        ctx.font = "700 9px 'Segoe UI', sans-serif";
+        const captionWidth = ctx.measureText(caption).width;
+
+        ctx.font = "700 22px 'Segoe UI', sans-serif";
+        const yourText = String(yourScore);
+        const separator = " : ";
+        const opponentText = String(opponentScore);
+        const yourWidth = ctx.measureText(yourText).width;
+        const separatorWidth = ctx.measureText(separator).width;
+        const opponentWidth = ctx.measureText(opponentText).width;
+        const scoreWidth = yourWidth + separatorWidth + opponentWidth;
+
+        const plaqueWidth = Math.max(64, scoreWidth + 22, captionWidth + 14);
+        const plaqueHeight = 46;
+        const left = cx - plaqueWidth / 2;
+        const top = y - plaqueHeight / 2;
+
+        ctx.fillStyle = "rgba(6, 22, 36, 0.78)";
+        pathRoundRect(ctx, left, top, plaqueWidth, plaqueHeight, 8);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.textAlign = "center";
+        ctx.font = "700 9px 'Segoe UI', sans-serif";
+        ctx.fillStyle = "rgba(214, 240, 250, 0.85)";
+        ctx.fillText(caption, cx, top + 11);
+
+        ctx.textAlign = "left";
+        ctx.font = "700 22px 'Segoe UI', sans-serif";
+        let x = cx - scoreWidth / 2;
+
+        ctx.fillStyle = "#8fe0ff";
+        ctx.fillText(yourText, x, top + 32);
+        x += yourWidth;
+
+        ctx.fillStyle = "rgba(214, 240, 250, 0.7)";
+        ctx.fillText(separator, x, top + 32);
+        x += separatorWidth;
+
+        ctx.fillStyle = "#ffb3ad";
+        ctx.fillText(opponentText, x, top + 32);
 
         ctx.restore();
     }
@@ -554,12 +703,18 @@
 
         ctx.font = "600 13px 'Segoe UI', sans-serif";
         ctx.textAlign = "center";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = palette.ink;
+        ctx.strokeText(label, plane.x, plane.y - 55);
         ctx.fillStyle = labelColor;
         ctx.fillText(label, plane.x, plane.y - 55);
 
         if (plane.abandoned) {
-            ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
             ctx.font = "600 10px 'Segoe UI', sans-serif";
+            ctx.fillStyle = "rgba(238, 247, 252, 0.9)";
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = palette.ink;
+            ctx.strokeText("БЕЗ ЛЁТЧИКА", plane.x, plane.y + 62);
             ctx.fillText("БЕЗ ЛЁТЧИКА", plane.x, plane.y + 62);
         }
 
@@ -715,30 +870,9 @@
 
     function drawHud(game, state) {
         const ctx = game.ctx;
-        const width = game.cssWidth;
         const yourSlot = state.yourSlot || 0;
-        const scores = state.scores || [0, 0];
-        const yourScore = scores[yourSlot] || 0;
-        const opponentScore = scores[1 - yourSlot] || 0;
-        const opponentIsBot = (state.planes || []).some((plane) => plane.slot !== yourSlot && plane.isBot);
-        const opponentLabel = opponentIsBot ? "БОТ" : "СОПЕРНИК";
-        const scoreText = `ВЫ  ${yourScore}  :  ${opponentScore}  ${opponentLabel}`;
 
         ctx.save();
-        ctx.font = "700 16px 'Segoe UI', sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        const scoreWidth = ctx.measureText(scoreText).width + 36;
-        ctx.fillStyle = "rgba(2, 6, 23, 0.62)";
-        pathRoundRect(ctx, (width - scoreWidth) / 2, 14, scoreWidth, 36, 12);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        ctx.fillStyle = "#e2e8f0";
-        ctx.fillText(scoreText, width / 2, 33);
 
         const player = (state.planes || []).find((plane) => plane.slot === yourSlot && !plane.abandoned && plane.alive);
 

@@ -9,7 +9,7 @@
 <div class="game-shell">
     <canvas id="gameCanvas" class="game-canvas"></canvas>
 
-    <a class="back-link" href="/">← В меню</a>
+    <a class="back-link" href="@Navigation.BaseUri">← В меню</a>
 
     @if (_room is not null && _room.Status != "waiting")
     {
@@ -466,7 +466,7 @@
             }
         }
 
-        Navigation.NavigateTo("/");
+        Navigation.NavigateTo(Navigation.BaseUri);
     }
 
     private void OnRoomUpdated(RoomInfo info)

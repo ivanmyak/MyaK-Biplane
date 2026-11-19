@@ -1,11 +1,22 @@
 ﻿@page "/"
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>@GameInfo.Title</PageTitle>
 
 <main class="menu-shell">
     <section class="menu-card">
-        <p class="eyebrow">2D dogfight prototype</p>
+        <div class="menu-head">
+            <p class="eyebrow">2D dogfight prototype</p>
+            <button type="button"
+                    class="theme-toggle"
+                    title="@ThemeLabel"
+                    aria-label="@ThemeLabel"
+                    @onclick="ToggleThemeAsync">
+                <span class="theme-toggle-icon" aria-hidden="true">@ThemeIcon</span>
+                <span>@ThemeLabel</span>
+            </button>
+        </div>
         <h1>@GameInfo.Title</h1>
         <p class="subtitle">
             Матч до 5 уничтожений. В центре карты — башня-маяк: аппараты появляются
@@ -115,8 +126,43 @@
     private PlaneKind _kind = PlaneKind.Biplane;
     private string _joinCode = string.Empty;
     private string? _error;
+    private string _theme = "dark";
+
+    private string ThemeLabel => _theme == "light" ? "Тёмная тема" : "Светлая тема";
+
+    private string ThemeIcon => _theme == "light" ? "☾" : "☀";
 
     private bool CanJoin => _joinCode.Trim().Length >= 4;
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        // В WASM JS-рантайм синхронный: забираем тему до первой отрисовки,
+        // чтобы кнопка сразу показывала правильное действие.
+        if (JS is IJSInProcessRuntime inProcess)
+        {
+            try
+            {
+                _theme = inProcess.Invoke<string>("myakTheme.current");
+            }
+            catch (JSException)
+            {
+                // Остаёмся на тёмной теме по умолчанию.
+            }
+        }
+    }
+
+    private async Task ToggleThemeAsync()
+    {
+        try
+        {
+            _theme = await JS.InvokeAsync<string>("myakTheme.toggle");
+        }
+        catch (JSException)
+        {
+            _theme = _theme == "light" ? "dark" : "light";
+        }
+    }
 
     private void ShowBot()
     {
@@ -157,12 +203,12 @@
 
     private void StartBot()
     {
-        Navigation.NavigateTo($"/play?mode=bot&kind={KindName(_kind)}");
+        Navigation.NavigateTo($"{Navigation.BaseUri}play?mode=bot&kind={KindName(_kind)}");
     }
 
     private void StartHost()
     {
-        Navigation.NavigateTo($"/play?mode=host&kind={KindName(_kind)}");
+        Navigation.NavigateTo($"{Navigation.BaseUri}play?mode=host&kind={KindName(_kind)}");
     }
 
     private void StartJoin()
@@ -176,7 +222,7 @@
         }
 
         Navigation.NavigateTo(
-            $"/play?mode=join&kind={KindName(_kind)}&code={Uri.EscapeDataString(code)}");
+            $"{Navigation.BaseUri}play?mode=join&kind={KindName(_kind)}&code={Uri.EscapeDataString(code)}");
     }
 
     private RenderFragment AircraftPicker() =>
