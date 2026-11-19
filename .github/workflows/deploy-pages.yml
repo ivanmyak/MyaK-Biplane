@@ -57,6 +57,14 @@ jobs:
             exit 1
           fi
 
+          case "$SERVER_BASE_URL" in
+            https://*) ;;
+            *)
+              echo "::error::SERVER_BASE_URL должен начинаться с https:// — GitHub Pages работает по HTTPS."
+              exit 1
+              ;;
+          esac
+
           cat > publish/wwwroot/appsettings.json <<EOF
           {
             "Server": {
