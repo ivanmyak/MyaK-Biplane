@@ -15,7 +15,8 @@ try {
     if ($parents.Count -ge 3) {
         $commits = (git rev-list --count "$($parents[1])..$($parents[2])").Trim()
     } else {
-        $commits = "0"
+        # Обычный коммит в master: считаем его самого.
+        $commits = (git rev-list --count HEAD~1..HEAD).Trim()
     }
 
     $version = "0.$merges.$commits"
