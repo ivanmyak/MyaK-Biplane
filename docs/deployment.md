@@ -132,6 +132,11 @@ game.example.com {
    - **Name**: `SERVER_BASE_URL`;
    - **Value**: публичный HTTPS-адрес сервера без завершающего слэша и без `/hubs`,
      например `https://myak-biplane-server.fly.dev`.
+
+   Переменную можно создать на уровне репозитория (**Variables**) или на уровне
+   окружения **github-pages** (**Environments → github-pages → Environment variables**).
+   Workflow читает её в обоих случаях: job сборки объявляет
+   `environment: github-pages`.
 4. Смержите изменения в `master` или запустите workflow вручную:
    **Actions → Deploy client to GitHub Pages → Run workflow**.
 

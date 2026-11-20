@@ -24,6 +24,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # SERVER_BASE_URL может храниться как переменная окружения github-pages.
+    # Без этой строки vars.SERVER_BASE_URL в build-джобе пустая.
+    environment: github-pages
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,8 +54,9 @@ jobs:
           SERVER_BASE_URL: ${{ vars.SERVER_BASE_URL }}
         run: |
           if [ -z "$SERVER_BASE_URL" ]; then
-            echo "::error::Не задана переменная репозитория SERVER_BASE_URL."
-            echo "Settings → Secrets and variables → Actions → Variables → New repository variable."
+            echo "::error::Не задана переменная SERVER_BASE_URL."
+            echo "Settings → Secrets and variables → Actions → Variables:"
+            echo "создайте переменную на уровне репозитория или окружения github-pages."
             echo "Значение — HTTPS-адрес MyaKBiplane.Server, например https://myak-biplane.example.com"
             exit 1
           fi
