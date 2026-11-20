@@ -105,6 +105,39 @@ https://myak-biplane-server.fly.dev/health  →  {"status":"ok"}
   Mini App работоспособным и без них.
 - Рекомендуется горизонтальная ориентация: игровое поле 1600×900, на узком экране HUD теснее.
 
+## Обновление не видно в Telegram / игра тормозит
+
+Если в браузере по адресу GitHub Pages уже новая версия (проверьте номер внизу меню), а в Telegram
+открывается старая — это почти всегда **адрес кнопки меню** или **кеш WebView**.
+
+1. Проверьте, куда именно ведёт кнопка бота:
+
+   ```powershell
+   $token = "<токен_бота>"
+   Invoke-RestMethod "https://api.telegram.org/bot$token/getChatMenuButton" | ConvertTo-Json -Depth 5
+   ```
+
+   Если там `*.trycloudflare.com` / `*.ngrok-free.app` — это адрес локального туннеля из тестов.
+   Именно он объясняет и старый интерфейс, и сильные задержки: трафик идёт через туннель до вашего
+   ПК. Верните кнопку на продакшн-адрес:
+
+   ```powershell
+   $url  = "https://ivanmyak.github.io/MyaK-Biplane/"
+   $menu = @{ type = "web_app"; text = "Играть"; web_app = @{ url = $url } } | ConvertTo-Json -Compress
+   Invoke-RestMethod "https://api.telegram.org/bot$token/setChatMenuButton" -Method Post -Body @{ menu_button = $menu }
+   ```
+
+   Или сделайте то же через BotFather: `/setmenubutton` → Web App → тот же URL.
+2. Полностью закройте Mini App (смахните вверх / «Назад»), затем откройте заново. Telegram кеширует
+   ресурсы Mini App по адресу — одного обновления страницы недостаточно. Если старая версия
+   осталась, зайдите в **Telegram → Настройки → Данные и память → Память → Очистить кеш** и
+   перезапустите Telegram.
+3. Для гарантии можно добавить к URL кнопки параметр с версией, например
+   `https://ivanmyak.github.io/MyaK-Biplane/?v=0.4.1` — он изменит ключ кеша и заставит Telegram
+   скачать свежие файлы. После следующего деплоя параметр нужно будет увеличить.
+4. Убедитесь, что Pages действительно пересобрался: откройте адрес в обычном браузере и сверьте
+   номер версии внизу меню с последним деплоем в **Actions → Deploy client to GitHub Pages**.
+
 ## Связанные файлы
 
 | Файл | Что делает |

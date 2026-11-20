@@ -622,6 +622,14 @@ html.telegram-webapp .game-shell {
     font-size: 0.9rem;
 }
 
+.version-badge {
+    margin: 1rem 0 0;
+    color: var(--muted-faint);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-align: right;
+}
+
 .game-overlay {
     position: absolute;
     inset: 0;
@@ -1200,6 +1208,11 @@ html.needs-landscape .telegram-rotate-overlay {
     .footnote {
         margin-top: 0.5rem;
         font-size: 0.66rem;
+    }
+
+    .version-badge {
+        margin-top: 0.4rem;
+        font-size: 0.6rem;
     }
 
     .game-overlay {

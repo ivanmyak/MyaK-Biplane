@@ -201,6 +201,23 @@ dotnet test MyaKBiplane.Tests/MyaKBiplane.Tests.csproj
 
 Адрес игры: `https://ivanmyak.github.io/MyaK-Biplane/`.
 
+### Версия проекта
+
+Версия показывается в правом нижнем углу меню (и на экране помощи) в формате
+`0.<минор>.<патч>`:
+
+- **минор** — количество слияний в главную ветвь (`git rev-list --merges --count`);
+- **патч** — количество коммитов в последней слитой ветке
+  (`git rev-list --count HEAD^1..HEAD^2`).
+
+Значение вычисляется при деплое в workflow и записывается в `publish/wwwroot/appsettings.json`
+(ключ `App:Version`). Локально по умолчанию отображается `0.0.0`; чтобы получить то же значение,
+запустите:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/update-version.ps1
+```
+
 ### Telegram Mini App
 
 Тот же адрес можно открыть как Mini App в Telegram — отдельный нативный клиент не нужен.
