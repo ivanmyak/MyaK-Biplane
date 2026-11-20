@@ -12,10 +12,16 @@
         return themes.includes(value) ? value : null;
     }
 
+    function telegramTheme() {
+        return normalize(window.Telegram?.WebApp?.colorScheme);
+    }
+
     function systemTheme() {
-        return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
-            ? "light"
-            : "dark";
+        // В Telegram системная тема — это тема клиента Telegram, а не ОС.
+        return telegramTheme()
+            || (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark");
     }
 
     function storedTheme() {
@@ -27,6 +33,21 @@
         }
     }
 
+    function syncTelegramChrome(theme) {
+        const tg = window.Telegram?.WebApp;
+
+        if (!tg) {
+            return;
+        }
+
+        try {
+            tg.setHeaderColor?.(themeColors[theme]);
+            tg.setBackgroundColor?.(themeColors[theme]);
+        } catch (error) {
+            // Старые версии Telegram не умеют менять цвет шапки.
+        }
+    }
+
     function apply(theme) {
         const value = normalize(theme) || systemTheme();
         document.documentElement.dataset.theme = value;
@@ -35,6 +56,8 @@
         if (meta) {
             meta.setAttribute("content", themeColors[value]);
         }
+
+        syncTelegramChrome(value);
 
         return value;
     }
@@ -82,6 +105,8 @@
         current,
         set,
         toggle,
+        apply,
+        stored: storedTheme,
         system: systemTheme
     };
 })();

@@ -25,6 +25,8 @@
 - Отдельный экран «Помощь» в меню вместо постоянной панели подсказок в бою.
 - Blazor WASM клиент с Canvas: меню, HUD, частицы, экраны ожидания/паузы/победы.
 - Светлая и тёмная темы интерфейса с переключателем в главном меню и сохранением выбора.
+- Telegram Mini App: fullscreen, синхронизация темы и безопасных зон, сенсорные стики и кнопки,
+  back-кнопка и тактильная отдача.
 - Docker-оркестрация для release и локального debug.
 - Точечные тесты ядра.
 
@@ -197,6 +199,13 @@ dotnet test MyaKBiplane.Tests/MyaKBiplane.Tests.csproj
 4. Запустите workflow **Deploy client to GitHub Pages** (или смержите в `master`).
 
 Адрес игры: `https://ivanmyak.github.io/MyaK-Biplane/`.
+
+### Telegram Mini App
+
+Тот же адрес можно открыть как Mini App в Telegram — отдельный нативный клиент не нужен.
+Через BotFather нужно создать бота, Mini App (`/newapp`) и кнопку меню (`/setmenubutton`) с URL
+`https://ivanmyak.github.io/MyaK-Biplane/`. CORS на Fly.io менять не нужно: origin тот же,
+что у GitHub Pages. Подробности — в [`docs/telegram.md`](docs/telegram.md).
 
 ## Docker
 

@@ -11,6 +11,47 @@
 
     <a class="back-link" href="@Navigation.BaseUri">← В меню</a>
 
+    @* Сенсорное управление: видно только на телефоне/в Telegram mobile. *@
+    <div class="touch-controls @(_room?.Status == "playing" ? "touch-controls-active" : string.Empty)"
+         aria-hidden="true">
+        <div class="touch-stick touch-stick-move" data-touch-stick="move">
+            <span class="touch-stick-knob"></span>
+            <span class="touch-stick-label">Движение</span>
+        </div>
+        <div class="touch-stick touch-stick-aim" data-touch-stick="aim">
+            <span class="touch-stick-knob"></span>
+            <span class="touch-stick-label">Прицел</span>
+        </div>
+        <div class="touch-buttons">
+            <button type="button" class="touch-button touch-button-fire" data-touch-action="fire">
+                Огонь
+            </button>
+            <button type="button" class="touch-button" data-touch-action="ability">
+                @(_kind == PlaneKind.Biplane ? "Ускор." : "Рывок")
+            </button>
+            @if (_kind == PlaneKind.Biplane)
+            {
+                <button type="button" class="touch-button"
+                        data-touch-action="reload"
+                        aria-label="Перезарядка">
+                    R
+                </button>
+            }
+            <button type="button" class="touch-button"
+                    data-touch-action="eject"
+                    aria-label="Покинуть аппарат">
+                E
+            </button>
+            <button type="button" class="touch-button" data-touch-action="parachute">
+                Купол
+            </button>
+            <button type="button" class="touch-button touch-button-pause" data-touch-action="pause"
+                    aria-label="Пауза">
+                II
+            </button>
+        </div>
+    </div>
+
     @if (_room is not null && _room.Status != "waiting")
     {
         <div class="game-meta">
@@ -245,6 +286,7 @@
         _started = true;
         _dotNetRef = DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("myakBiplane.start", _dotNetRef, CanvasId);
+        await SetTelegramModeAsync(true);
         await ConnectAndEnterAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -354,6 +396,7 @@
             }
         }
 
+        await SetTelegramModeAsync(false);
         _dotNetRef?.Dispose();
     }
 
@@ -378,6 +421,19 @@
         catch (Exception exception)
         {
             _error = exception.Message;
+        }
+    }
+
+    private async Task SetTelegramModeAsync(bool active)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("myakTelegram.setGameActive", active);
+            await JS.InvokeVoidAsync("myakTelegram.setBackButton", active);
+        }
+        catch (JSException)
+        {
+            // Вне Telegram и при выгрузке страницы эти вызовы не нужны.
         }
     }
 

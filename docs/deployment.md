@@ -177,3 +177,12 @@ Workflow `.github/workflows/deploy-pages.yml`:
   увеличенные таймауты — пример есть в `MyaKBiplane.Client/nginx.conf`.
 - **После обновления страницы 404.** В артефакте нет `404.html`; workflow создаёт его
   автоматически, проверьте лог шага «Add SPA fallback».
+
+## Запуск в Telegram
+
+Тот же сайт работает как Telegram Mini App: через BotFather создайте бота, Mini App (`/newapp`)
+и кнопку меню (`/setmenubutton`) с URL `https://ivanmyak.github.io/MyaK-Biplane/`. Отдельные
+настройки CORS не нужны — Mini App открывает тот же origin GitHub Pages, который уже разрешён.
+Клиент включает fullscreen, синхронизирует тему и безопасные зоны Telegram и показывает сенсорные
+стики/кнопки на мобильных устройствах. Подробная инструкция и ограничения —
+в [`telegram.md`](telegram.md).

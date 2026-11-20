@@ -8,14 +8,20 @@
     <section class="menu-card">
         <div class="menu-head">
             <p class="eyebrow">2D dogfight prototype</p>
-            <button type="button"
-                    class="theme-toggle"
-                    title="@ThemeLabel"
-                    aria-label="@ThemeLabel"
-                    @onclick="ToggleThemeAsync">
-                <span class="theme-toggle-icon" aria-hidden="true">@ThemeIcon</span>
-                <span>@ThemeLabel</span>
-            </button>
+            <div class="menu-head-actions">
+                @if (!string.IsNullOrWhiteSpace(_telegramName))
+                {
+                    <span class="telegram-chip" title="Telegram Mini App">TG · @_telegramName</span>
+                }
+                <button type="button"
+                        class="theme-toggle"
+                        title="@ThemeLabel"
+                        aria-label="@ThemeLabel"
+                        @onclick="ToggleThemeAsync">
+                    <span class="theme-toggle-icon" aria-hidden="true">@ThemeIcon</span>
+                    <span>@ThemeLabel</span>
+                </button>
+            </div>
         </div>
         <h1>@GameInfo.Title</h1>
         <p class="subtitle">
@@ -127,6 +133,7 @@
     private string _joinCode = string.Empty;
     private string? _error;
     private string _theme = "dark";
+    private string _telegramName = string.Empty;
 
     private string ThemeLabel => _theme == "light" ? "Тёмная тема" : "Светлая тема";
 
@@ -149,6 +156,31 @@
             {
                 // Остаёмся на тёмной теме по умолчанию.
             }
+        }
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _telegramName = await JS.InvokeAsync<string>("myakTelegram.displayName");
+            await JS.InvokeVoidAsync("myakTelegram.setGameActive", false);
+            await JS.InvokeVoidAsync("myakTelegram.setBackButton", false);
+        }
+        catch (JSException)
+        {
+            // Вне Telegram приветствие не нужно.
+        }
+
+        if (!string.IsNullOrWhiteSpace(_telegramName))
+        {
+            StateHasChanged();
         }
     }
 

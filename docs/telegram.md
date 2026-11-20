@@ -1,0 +1,107 @@
+# MyaK Biplane как Telegram Mini App
+
+Игра запускается внутри Telegram как **Mini App** (веб-приложение в WebView). Специальный
+нативный клиент не нужен: Telegram открывает тот же статический Blazor WASM-клиент, который
+уже лежит на GitHub Pages, с поддержкой fullscreen, сенсорного управления и темы Telegram.
+
+```
+Telegram WebView ── HTTPS ──> GitHub Pages (клиент, Mini App)
+                                  │
+                                  └── WSS/HTTPS ──> MyaKBiplane.Server (Fly.io, SignalR)
+```
+
+## Что реализовано
+
+- Подключён официальный SDK `https://telegram.org/js/telegram-web-app.js` в `index.html`.
+  Вне Telegram он загружается, но не активируется — обычная игра в браузере работает как раньше.
+- `wwwroot/js/telegram.js` вызывает `ready()`, `expand()`, `disableVerticalSwipes()` и запрашивает
+  fullscreen; обновляет CSS-переменные `--tg-viewport-height` и `--tg-safe-*` при изменении
+  viewport / safe area / fullscreen.
+- Тема приложения синхронизируется с `Telegram.WebApp.colorScheme` (светлая/тёмная), при этом
+  сохранённый пользователем выбор в игре имеет приоритет. Цвет шапки и фона задаётся через
+  `setHeaderColor` / `setBackgroundColor`.
+- В меню показывается чип с именем пользователя Telegram (`initDataUnsafe.user`).
+- Экранные стики и кнопки появляются на тач-устройствах и в мобильном Telegram:
+  левый стик — движение/тяга, правый — прицел и огонь, кнопки — ускорение/рывок,
+  перезарядка,катапульта (`E`), парашют и пауза.
+- Кнопка «Назад» Telegram и закрытие с подтверждением включаются на экране боя.
+- Нажатия кнопок сопровождаются лёгкой тактильной отдачей (HapticFeedback), где её поддерживает
+  клиент.
+
+## 1. Настроить бота в BotFather
+
+1. Откройте чат с [@BotFather](https://t.me/BotFather).
+2. `/newbot` — создайте бота, получите токен. Он понадобится только если позже захотите
+   серверную проверку `initData`; для самого Mini App токен не используется.
+3. `/newapp` — создайте Mini App и выберите бота из шага 2.
+4. Введите название и описание. По запросу загрузите иконку (512×512 PNG) и GIF-превью.
+5. В поле **Web App URL** укажите адрес игры:
+
+   ```
+   https://ivanmyak.github.io/MyaK-Biplane/
+   ```
+
+   Адрес обязателен по **HTTPS** — Telegram не открывает Mini App по HTTP.
+6. Включите кнопку меню бота: `/setmenubutton` → выберите бота → **Web App** → тот же URL.
+   Тогда игра открывается кнопкой в чате с ботом.
+
+Мини-приложение можно открыть и по прямой ссылке вида
+`https://t.me/<bot_username>/<app_short_name>`.
+
+## 2. Подтвердить сервер и CORS
+
+Отдельных настроек CORS для Telegram **не требуется**: Mini App открывает тот же origin
+`https://ivanmyak.github.io`, что и обычная страница GitHub Pages. Он уже разрешён в
+`Cors__AllowedOrigins__0` на Fly.io (см. [`deployment.md`](deployment.md)).
+
+Если вы публикуете Mini App на другом домене, добавьте его origin в CORS:
+
+```powershell
+& $flyctl secrets set Cors__AllowedOrigins__0=https://game.example.com --app myak-biplane-server
+```
+
+Проверьте, что сервер доступен по HTTPS и отвечает:
+
+```
+https://myak-biplane-server.fly.dev/health  →  {"status":"ok"}
+```
+
+Иначе меню откроется, но матч с ботом не запустится — клиент не считает физику сам.
+
+## 3. Проверить в Telegram
+
+1. Откройте Mini App через меню бота на телефоне (Android/iOS).
+2. Убедитесь, что игра распахнулась на весь экран, тема совпадает с темой Telegram,
+   а системные панели не перекрывают HUD (безопасные зоны учитываются).
+3. Нажмите «Игра с ботом» → «Начать бой с ботом» → появятся экранные стики и кнопки.
+4. Проверьте, что «Назад» в шапке Telegram возвращает в меню, а пауза/реванш работают.
+5. Повторите проверку в светлой и тёмной теме Telegram.
+
+В desktop-Telegram сенсорные элементы скрыты — там работает обычное управление клавиатурой
+и мышью. Если на сенсорном ноутбуке стики не появились, проверьте, что браузер сообщает
+`(pointer: coarse)`; принудительно их можно включить, добавив `telegram-mobile` к `<html>`.
+
+## Ограничения и замечания
+
+- `initDataUnsafe` используется только для отображения имени. Подлинность `initData` на сервере
+  **не проверяется**: для этого нужно передавать `Telegram.WebApp.initData` на сервер и
+  проверять HMAC с токеном бота. Если нужна авторизация пользователей/лидерборд — реализуйте
+  проверку отдельно, токен храните только на сервере в secrets.
+- Комнаты и матчи живут в памяти одной машины Fly.io (`--ha=false`). При перезапуске машины
+  активные матчи сбрасываются.
+- Некоторые старые клиенты Telegram не поддерживают часть методов SDK (`requestFullscreen`,
+  `disableVerticalSwipes`, смена цвета шапки). Игнорирование ошибок в `telegram.js` делает
+  Mini App работоспособным и без них.
+- Рекомендуется горизонтальная ориентация: игровое поле 1600×900, на узком экране HUD теснее.
+
+## Связанные файлы
+
+| Файл | Что делает |
+| --- | --- |
+| `MyaKBiplane.Client/wwwroot/index.html` | Подключает SDK Telegram и `js/telegram.js`, viewport с `viewport-fit=cover`. |
+| `MyaKBiplane.Client/wwwroot/js/telegram.js` | Инициализация Mini App, viewport/safe-area, тема, fullscreen, back-кнопка, haptics. |
+| `MyaKBiplane.Client/wwwroot/js/theme.js` | Учитывает тему Telegram и красит шапку/фон клиента. |
+| `MyaKBiplane.Client/wwwroot/js/game.js` | Сенсорный ввод и прицел, подключение стиков/кнопок. |
+| `MyaKBiplane.Client/Pages/Play.razor` | Разметка сенсорных элементов, режим боя в Telegram. |
+| `MyaKBiplane.Client/Pages/Home.razor` | Чип с именем пользователя Telegram, сброс режима боя. |
+| `MyaKBiplane.Client/wwwroot/css/app.css` | Fullscreen, безопасные зоны, стили стиков и кнопок. |
