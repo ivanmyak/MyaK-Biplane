@@ -118,6 +118,8 @@ body {
     color: var(--text);
     font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
     overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
     transition: background-color 160ms ease, color 160ms ease;
 }
 
@@ -164,6 +166,28 @@ kbd {
 
 .menu-head .eyebrow {
     margin-bottom: 0;
+}
+
+.menu-head-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.telegram-chip {
+    max-width: 14rem;
+    overflow: hidden;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--cyan-soft-border);
+    border-radius: 999px;
+    background: var(--cyan-soft);
+    color: var(--accent-text);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .theme-toggle {
@@ -308,8 +332,15 @@ h1:focus {
     position: relative;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     background: var(--game-bg);
+}
+
+/* В Telegram высота приходит из viewportStableHeight и не скачет при
+   появлении/скрытии панелей клиента. */
+html.telegram-webapp .game-shell {
+    height: var(--tg-viewport-height, 100dvh);
 }
 
 .game-canvas {
@@ -322,8 +353,8 @@ h1:focus {
 
 .back-link {
     position: absolute;
-    top: 1rem;
-    left: 1rem;
+    top: calc(1rem + var(--tg-safe-top, 0px));
+    left: calc(1rem + var(--tg-safe-left, 0px));
     z-index: 2;
     padding: 0.45rem 0.7rem;
     border: 1px solid var(--floating-border);
@@ -342,8 +373,8 @@ h1:focus {
 
 .game-meta {
     position: absolute;
-    top: 1rem;
-    right: 1rem;
+    top: calc(1rem + var(--tg-safe-top, 0px));
+    right: calc(1rem + var(--tg-safe-right, 0px));
     z-index: 2;
     display: flex;
     flex-wrap: wrap;
@@ -732,5 +763,200 @@ h1:focus {
     50% {
         opacity: 1;
         transform: translateY(-0.2rem);
+    }
+}
+
+/* --- Telegram Mini App � ��������� ���������� --- */
+
+html.telegram-webapp body {
+    height: var(--tg-viewport-height, 100dvh);
+    overscroll-behavior: none;
+}
+
+html.telegram-webapp .menu-shell {
+    padding-top: calc(2rem + var(--tg-safe-top, 0px));
+    padding-right: calc(2rem + var(--tg-safe-right, 0px));
+    padding-bottom: calc(2rem + var(--tg-safe-bottom, 0px));
+    padding-left: calc(2rem + var(--tg-safe-left, 0px));
+}
+
+.touch-controls {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: none;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.has-touch .touch-controls-active,
+.telegram-mobile .touch-controls-active {
+    display: block;
+}
+
+.touch-stick {
+    position: absolute;
+    bottom: calc(1rem + var(--tg-safe-bottom, 0px));
+    width: 7.5rem;
+    height: 7.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(2, 6, 23, 0.28), rgba(2, 6, 23, 0.55));
+    box-shadow: inset 0 0 1.5rem rgba(0, 0, 0, 0.25);
+    pointer-events: auto;
+    touch-action: none;
+    backdrop-filter: blur(4px);
+}
+
+.touch-stick-move {
+    left: calc(1rem + var(--tg-safe-left, 0px));
+}
+
+.touch-stick-aim {
+    right: calc(1rem + var(--tg-safe-right, 0px));
+}
+
+.touch-stick-knob {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 3rem;
+    height: 3rem;
+    margin: -1.5rem 0 0 -1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    background: rgba(56, 189, 248, 0.55);
+    box-shadow: 0 0 0.8rem rgba(56, 189, 248, 0.5);
+    will-change: transform;
+}
+
+.touch-stick-aim .touch-stick-knob {
+    background: rgba(248, 113, 113, 0.55);
+    box-shadow: 0 0 0.8rem rgba(248, 113, 113, 0.5);
+}
+
+.touch-stick-label {
+    position: absolute;
+    left: 50%;
+    bottom: -1.25rem;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+    transform: translateX(-50%);
+}
+
+.touch-buttons {
+    position: absolute;
+    right: calc(1rem + var(--tg-safe-right, 0px));
+    bottom: calc(9.5rem + var(--tg-safe-bottom, 0px));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+    width: 10.5rem;
+    pointer-events: none;
+}
+
+.touch-button {
+    min-height: 2.75rem;
+    padding: 0.35rem 0.4rem;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 0.7rem;
+    background: rgba(2, 6, 23, 0.55);
+    color: #e2e8f0;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.1;
+    pointer-events: auto;
+    touch-action: none;
+    backdrop-filter: blur(4px);
+}
+
+.touch-button-fire {
+    grid-column: span 2;
+    background: rgba(248, 113, 113, 0.75);
+    color: #ffffff;
+}
+
+.touch-button-pause {
+    grid-column: span 3;
+}
+
+.touch-button:active {
+    background: rgba(56, 189, 248, 0.5);
+    transform: scale(0.96);
+}
+
+@media (max-width: 720px) {
+    .menu-shell {
+        padding: 1rem;
+    }
+
+    .menu-card {
+        padding: 1.25rem;
+        border-radius: 1rem;
+    }
+
+    .menu-actions {
+        flex-direction: column;
+    }
+
+    .menu-actions .button {
+        width: 100%;
+    }
+
+    .aircraft-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .overlay-panel {
+        padding: 1.1rem;
+        border-radius: 1rem;
+    }
+
+    .overlay-actions {
+        flex-direction: column;
+    }
+
+    .overlay-actions .button {
+        width: 100%;
+    }
+
+    .back-link {
+        font-size: 0.78rem;
+    }
+
+    .game-meta {
+        max-width: 45vw;
+        font-size: 0.7rem;
+    }
+}
+
+@media (max-height: 480px) and (pointer: coarse) {
+    .touch-stick {
+        width: 6rem;
+        height: 6rem;
+    }
+
+    .touch-stick-knob {
+        width: 2.4rem;
+        height: 2.4rem;
+        margin: -1.2rem 0 0 -1.2rem;
+    }
+
+    .touch-buttons {
+        bottom: calc(7.5rem + var(--tg-safe-bottom, 0px));
+        width: 9rem;
+    }
+
+    .touch-button {
+        min-height: 2.25rem;
+        font-size: 0.65rem;
     }
 }
