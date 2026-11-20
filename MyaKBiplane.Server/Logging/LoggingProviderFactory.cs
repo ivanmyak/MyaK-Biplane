@@ -42,10 +42,26 @@ public static class LoggingProviderFactory
             ? parsedRetention
             : 30;
 
-        var minLevel = configuration.GetSection("Logging:LogLevel")["MyaKBiplane"] ?? "Information";
+        var levels = configuration.GetSection("Logging:LogLevel");
+        var minLevel = levels["Default"] ?? levels["MyaKBiplane"] ?? "Information";
 
         var loggerConfiguration = new LoggerConfiguration()
             .MinimumLevel.Is(ParseLevel(minLevel));
+
+        // Категорийные уровни из Logging:LogLevel переносятся в Serilog как переопределения,
+        // иначе шумные категории вроде SignalR игнорируют настройки приложения.
+        foreach (var category in levels.GetChildren())
+        {
+            if (string.Equals(category.Key, "Default", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(category.Value))
+            {
+                loggerConfiguration.MinimumLevel.Override(category.Key, ParseLevel(category.Value));
+            }
+        }
 
         var providerActions = new Dictionary<string, Action>
         {

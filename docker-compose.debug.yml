@@ -45,6 +45,8 @@ services:
       args:
         BUILD_CONFIGURATION: Debug
     restart: unless-stopped
+    env_file:
+      - debug.env
     ports:
       - "${CLIENT_PORT:-5081}:80"
     depends_on:

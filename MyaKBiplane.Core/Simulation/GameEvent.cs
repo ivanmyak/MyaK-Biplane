@@ -24,7 +24,37 @@ public enum GameEventType
     Respawn,
 
     /// <summary>Матч завершён.</summary>
-    MatchFinished
+    MatchFinished,
+
+    /// <summary>Начата перезарядка магазина.</summary>
+    ReloadStarted,
+
+    /// <summary>Перезарядка магазина завершена.</summary>
+    ReloadFinished,
+
+    /// <summary>Лётчик покинул аппарат.</summary>
+    Eject,
+
+    /// <summary>Лётчик забрался обратно в аппарат.</summary>
+    Reenter,
+
+    /// <summary>Лётчик приземлился.</summary>
+    Landed,
+
+    /// <summary>Лётчик добрался до башни и получил новый аппарат.</summary>
+    TowerReached,
+
+    /// <summary>Аппарат разбился о землю.</summary>
+    Crash,
+
+    /// <summary>Лётчик раскрыл парашют.</summary>
+    ParachuteOpened,
+
+    /// <summary>Лётчик сложил парашют.</summary>
+    ParachuteClosed,
+
+    /// <summary>Лётчик погиб: разбился при падении или был сбит.</summary>
+    PilotKilled
 }
 
 /// <summary>
@@ -33,9 +63,9 @@ public enum GameEventType
 /// <param name="Type">Тип события.</param>
 /// <param name="Position">Позиция события в мировых координатах.</param>
 /// <param name="Value">Дополнительное числовое значение (например, урон).</param>
-/// <param name="IsPlayer">Относится ли событие к игроку.</param>
+/// <param name="Slot">Слот, к которому относится событие, или -1.</param>
 public readonly record struct GameEvent(
     GameEventType Type,
     System.Numerics.Vector2 Position,
     float Value = 0f,
-    bool IsPlayer = false);
+    int Slot = -1);

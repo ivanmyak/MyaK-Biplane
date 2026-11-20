@@ -1,0 +1,38 @@
+# Конфигурация сервера MyaK Biplane для Fly.io.
+# Клиент выкладывается отдельно на GitHub Pages.
+
+app = "myak-biplane-server"
+primary_region = "arn"
+
+[build]
+  dockerfile = "MyaKBiplane.Server/Dockerfile"
+
+[env]
+  ASPNETCORE_ENVIRONMENT = "Production"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Машина засыпает без подключений и просыпается на первый запрос.
+  # Для постоянной готовности поставьте min_machines_running = 1.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 200
+    soft_limit = 150
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

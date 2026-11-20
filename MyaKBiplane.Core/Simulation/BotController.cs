@@ -48,16 +48,27 @@ public sealed class BotController
     /// <returns>Ввод, который будет передан в симуляцию.</returns>
     public PlayerInput Update(GameWorld world, float deltaSeconds)
     {
-        var bot = world.Bot;
-        var target = world.Player;
+        var bot = world.ActivePlane(1);
+        var targetPlane = world.ActivePlane(0);
+        var targetPilot = world.Pilot(0);
 
-        if (!bot.IsAlive || !target.IsAlive || world.Status == MatchStatus.Finished)
+        if (bot is null || !bot.IsAlive || bot.IsEntering || world.Status == MatchStatus.Finished)
+        {
+            _chargeHeld = false;
+            return default;
+        }
+
+        var pilotIsTarget = targetPlane is null
+            && targetPilot.State is (PilotState.Falling or PilotState.Parachuting or PilotState.OnGround);
+
+        if (targetPlane is null && !pilotIsTarget)
         {
             _chargeHeld = false;
             return default;
         }
 
         _decisionTimer -= deltaSeconds;
+
         if (_decisionTimer > 0f)
         {
             return _cachedInput;
@@ -65,51 +76,73 @@ public sealed class BotController
 
         _decisionTimer = 0.06f + ((float)_random.NextDouble() * 0.08f);
 
+        // Лётчик вне аппарата — такая же цель, как и сам аппарат.
+        var targetPosition = targetPlane?.Position ?? targetPilot.Position;
+        var targetVelocity = targetPlane?.Velocity ?? targetPilot.Velocity;
+        var canShoot = targetPlane is null || !targetPlane.IsProtected;
+
         _cachedInput = bot.Kind == PlaneKind.Biplane
-            ? UpdateBiplane(bot, target)
-            : UpdatePterodactyl(bot, target);
+            ? UpdateBiplane(bot, targetPosition, targetVelocity, canShoot)
+            : UpdatePterodactyl(bot, targetPosition, targetVelocity, canShoot);
 
         return _cachedInput;
     }
 
-    private PlayerInput UpdateBiplane(Plane bot, Plane target)
+    private PlayerInput UpdateBiplane(
+        Plane bot,
+        Vector2 targetPosition,
+        Vector2 targetVelocity,
+        bool canShoot)
     {
-        var leadTime = 0.12f;
-        var predicted = target.Position + (target.Velocity * leadTime);
+        const float leadTime = 0.12f;
+        var predicted = targetPosition + (targetVelocity * leadTime);
         var steering = predicted - bot.Position;
         steering += GetEdgeAvoidance(bot.Position);
+        steering += GetGroundAvoidance(bot.Position);
 
-        var distance = Vector2.Distance(bot.Position, target.Position);
+        var distance = Vector2.Distance(bot.Position, targetPosition);
         var desiredAngle = MathF.Atan2(steering.Y, steering.X);
         desiredAngle += ((float)_random.NextDouble() - 0.5f) * 0.07f;
 
         var angleDelta = GameMath.AngleDelta(bot.Rotation, desiredAngle);
         var turn = GameMath.Clamp(angleDelta * 2.3f, -1f, 1f);
         var thrust = MathF.Abs(angleDelta) > 1.7f ? 0.35f : 1f;
-        var fire = MathF.Abs(angleDelta) < 0.2f && distance < 760f;
-        var useBoost = distance > 680f && bot.BoostCooldownRemaining <= 0f;
+        var fire = canShoot
+            && !bot.IsProtected
+            && !bot.IsReloading
+            && bot.Ammo > 0
+            && MathF.Abs(angleDelta) < 0.2f
+            && distance < 760f;
+        var reload = !bot.IsReloading
+            && (bot.Ammo == 0 || (bot.Ammo <= 2 && distance > 420f && MathF.Abs(angleDelta) > 0.5f));
+        var useBoost = distance > 680f && bot.BoostCooldownRemaining <= 0f && !bot.IsProtected;
 
         return new PlayerInput
         {
             Thrust = thrust,
             Turn = turn,
             Fire = fire,
+            Reload = reload,
             Ability = useBoost,
             AimX = predicted.X,
             AimY = predicted.Y
         };
     }
 
-    private PlayerInput UpdatePterodactyl(Plane bot, Plane target)
+    private PlayerInput UpdatePterodactyl(
+        Plane bot,
+        Vector2 targetPosition,
+        Vector2 targetVelocity,
+        bool canShoot)
     {
-        var distance = Vector2.Distance(bot.Position, target.Position);
+        var distance = Vector2.Distance(bot.Position, targetPosition);
         var leadTime = GameMath.Clamp(distance / _balance.Pterodactyl.MinSpearSpeed, 0.15f, 1.1f);
-        var predicted = target.Position + (target.Velocity * leadTime);
+        var predicted = targetPosition + (targetVelocity * leadTime);
         var aimJitter = ((float)_random.NextDouble() - 0.5f) * 0.09f;
         var aim = predicted + (new Vector2(MathF.Cos(aimJitter), MathF.Sin(aimJitter)) * distance * 0.08f);
 
         var toTarget = predicted - bot.Position;
-        var move = Vector2.Zero;
+        Vector2 move;
 
         if (distance > 430f)
         {
@@ -117,7 +150,7 @@ public sealed class BotController
         }
         else if (distance < 230f)
         {
-            move = GameMath.NormalizeOrZero(bot.Position - target.Position);
+            move = GameMath.NormalizeOrZero(bot.Position - targetPosition);
         }
         else
         {
@@ -125,10 +158,12 @@ public sealed class BotController
         }
 
         move += GetEdgeAvoidance(bot.Position) * 0.004f;
+        move += GetGroundAvoidance(bot.Position) * 0.004f;
         move = GameMath.NormalizeOrZero(move);
 
         var fire = false;
-        if (bot.ReloadRemaining <= 0f)
+
+        if (canShoot && !bot.IsProtected && bot.ReloadRemaining <= 0f)
         {
             if (!_chargeHeld && distance < 1000f)
             {
@@ -138,6 +173,7 @@ public sealed class BotController
             if (_chargeHeld)
             {
                 fire = bot.Charge < 0.85f && distance > 240f;
+
                 if (!fire)
                 {
                     _chargeHeld = false;
@@ -181,11 +217,20 @@ public sealed class BotController
         {
             result.Y += strength;
         }
-        else if (position.Y > GameBalance.WorldHeight - edgeDistance)
-        {
-            result.Y -= strength;
-        }
 
         return result;
+    }
+
+    private static Vector2 GetGroundAvoidance(Vector2 position)
+    {
+        var danger = GameBalance.GroundY - 170f;
+
+        if (position.Y <= danger)
+        {
+            return Vector2.Zero;
+        }
+
+        var strength = GameMath.Lerp(120f, 620f, (position.Y - danger) / 170f);
+        return new Vector2(0f, -strength);
     }
 }

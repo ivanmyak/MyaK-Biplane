@@ -1,13 +1,31 @@
 using MyaKBiplane.Server.Hubs;
 using MyaKBiplane.Server.Logging;
+using MyaKBiplane.Server.Rooms;
 using MyaKBiplane.Shared;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Хостинги вроде Render передают порт через PORT; в Docker без этой переменной
+// остаётся ASPNETCORE_URLS=http://+:8080 из Dockerfile.
+var port = Environment.GetEnvironmentVariable("PORT");
+
+if (int.TryParse(port, out var httpPort) && httpPort is > 0 and <= 65535)
+{
+    builder.WebHost.UseUrls($"http://+:{httpPort}");
+}
+
 builder.Configuration.AddEnvironmentVariables();
 LoggingProviderFactory.Configure(builder.Logging, builder.Configuration);
 
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+    options.MaximumReceiveMessageSize = 64 * 1024;
+    options.KeepAliveInterval = TimeSpan.FromSeconds(10);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddSingleton<RoomManager>();
 builder.Services.AddHealthChecks();
 
 var allowedOrigins = builder.Configuration

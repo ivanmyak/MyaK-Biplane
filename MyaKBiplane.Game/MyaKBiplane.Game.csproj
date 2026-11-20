@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MyaKBiplane.Core\MyaKBiplane.Core.csproj" />
+    <ProjectReference Include="..\MyaKBiplane.Shared\MyaKBiplane.Shared.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

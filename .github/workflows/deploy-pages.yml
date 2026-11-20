@@ -1,0 +1,100 @@
+name: Deploy client to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Pages требует эти разрешения для деплоя через actions/deploy-pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Одновременно может идти только один деплой; новый отменяет предыдущий.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # Для project-сайта https://<user>.github.io/<repo>/.
+  # Для сайта пользователя https://<user>.github.io/ укажите "/".
+  PAGES_BASE_PATH: /MyaK-Biplane/
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Publish Blazor client
+        run: dotnet publish MyaKBiplane.Client/MyaKBiplane.Client.csproj -c Release -o publish
+
+      - name: Set Pages base path
+        run: |
+          index="publish/wwwroot/index.html"
+          grep -q '<base href="/" />' "$index" || {
+            echo "::error::В опубликованном index.html не найден <base href=\"/\" />"
+            exit 1
+          }
+          sed -i "s#<base href=\"/\" />#<base href=\"${PAGES_BASE_PATH}\" />#" "$index"
+          rm -f "$index.br" "$index.gz"
+
+      - name: Configure game server
+        env:
+          SERVER_BASE_URL: ${{ vars.SERVER_BASE_URL }}
+        run: |
+          if [ -z "$SERVER_BASE_URL" ]; then
+            echo "::error::Не задана переменная репозитория SERVER_BASE_URL."
+            echo "Settings → Secrets and variables → Actions → Variables → New repository variable."
+            echo "Значение — HTTPS-адрес MyaKBiplane.Server, например https://myak-biplane.example.com"
+            exit 1
+          fi
+
+          case "$SERVER_BASE_URL" in
+            https://*) ;;
+            *)
+              echo "::error::SERVER_BASE_URL должен начинаться с https:// — GitHub Pages работает по HTTPS."
+              exit 1
+              ;;
+          esac
+
+          cat > publish/wwwroot/appsettings.json <<EOF
+          {
+            "Server": {
+              "BaseUrl": "$SERVER_BASE_URL"
+            }
+          }
+          EOF
+
+          rm -f publish/wwwroot/appsettings.json.br publish/wwwroot/appsettings.json.gz
+
+      - name: Add SPA fallback and disable Jekyll
+        run: |
+          # GitHub Pages не умеет fallback на index.html, поэтому глубокие ссылки
+          # (/play, /not-found) обслуживаются через 404.html с тем же приложением.
+          cp publish/wwwroot/index.html publish/wwwroot/404.html
+          # Без .nojekyll Pages может выбросить каталог _framework.
+          touch publish/wwwroot/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: publish/wwwroot
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
