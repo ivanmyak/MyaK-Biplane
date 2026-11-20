@@ -287,6 +287,7 @@
         _dotNetRef = DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("myakBiplane.start", _dotNetRef, CanvasId);
         await SetTelegramModeAsync(true);
+        await SetScrollLockedAsync(true);
         await ConnectAndEnterAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -397,6 +398,7 @@
         }
 
         await SetTelegramModeAsync(false);
+        await SetScrollLockedAsync(false);
         _dotNetRef?.Dispose();
     }
 
@@ -421,6 +423,7 @@
         catch (Exception exception)
         {
             _error = exception.Message;
+            await SetScrollLockedAsync(false);
         }
     }
 
@@ -434,6 +437,18 @@
         catch (JSException)
         {
             // Вне Telegram и при выгрузке страницы эти вызовы не нужны.
+        }
+    }
+
+    private async Task SetScrollLockedAsync(bool locked)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("myakTelegram.setScrollLocked", locked);
+        }
+        catch (JSException)
+        {
+            // Вне Telegram свайпы не управляются.
         }
     }
 
@@ -527,9 +542,12 @@
 
     private void OnRoomUpdated(RoomInfo info)
     {
-        _ = InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             _room = info;
+            // На паузе/финише оверлей может быть выше экрана — свайпы нужны,
+            // чтобы его прокрутить. В живом бою они мешают экранным стикам.
+            await SetScrollLockedAsync(info.Status == "playing");
             StateHasChanged();
         });
     }
@@ -585,12 +603,13 @@
 
     private void OnRoomClosed(string reason)
     {
-        _ = InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             _closedReason = string.IsNullOrWhiteSpace(reason)
                 ? "Соперник покинул игру."
                 : reason;
             _room = null;
+            await SetScrollLockedAsync(false);
             StateHasChanged();
         });
     }
@@ -602,12 +621,13 @@
             return;
         }
 
-        _ = InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
             _closedReason = string.IsNullOrWhiteSpace(reason)
                 ? "Соединение с сервером закрыто."
                 : reason;
             _room = null;
+            await SetScrollLockedAsync(false);
             StateHasChanged();
         });
     }

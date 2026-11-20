@@ -3,6 +3,7 @@
 
     const root = document.documentElement;
     const tg = window.Telegram?.WebApp;
+    const coarsePointer = !!window.matchMedia?.("(pointer: coarse)").matches;
 
     // SDK подключается и вне Telegram, но initData и платформа остаются пустыми.
     // Поэтому «настоящим» Mini App считаем только контекст с данными Telegram.
@@ -10,11 +11,31 @@
         && (!!tg.initData
             || !!tg.initDataUnsafe?.user
             || (!!tg.platform && tg.platform !== "unknown"));
+    const telegramMobile = inTelegram && (tg.isMobile === true
+        || ["android", "ios"].includes((tg.platform || "").toLowerCase()));
+    const touchView = telegramMobile || coarsePointer;
+
+    function ensureRotateOverlay() {
+        if (!touchView || document.documentElement.querySelector(".telegram-rotate-overlay")) {
+            return;
+        }
+
+        const overlay = document.createElement("div");
+        overlay.className = "telegram-rotate-overlay";
+        overlay.setAttribute("role", "status");
+        overlay.innerHTML =
+            '<div class="telegram-rotate-icon" aria-hidden="true">↻</div>'
+            + '<p class="telegram-rotate-title">Поверните устройство</p>'
+            + '<p class="telegram-rotate-hint">Игра работает только в горизонтальной ориентации.<br />'
+            + 'Разверните телефон — и поле боя откроется на весь экран.</p>';
+
+        // Скрипт подключён в <head>, где document.body ещё может не существовать.
+        document.documentElement.appendChild(overlay);
+    }
 
     const api = {
         isAvailable: () => inTelegram,
-        isMobile: () => inTelegram && (tg.isMobile === true
-            || ["android", "ios"].includes((tg.platform || "").toLowerCase())),
+        isMobile: () => telegramMobile,
         displayName: () => {
             const user = tg?.initDataUnsafe?.user;
 
@@ -29,6 +50,7 @@
         platform: inTelegram ? (tg.platform || "") : "",
         version: inTelegram ? (tg.version || "") : "",
         setGameActive: () => {},
+        setScrollLocked: () => {},
         setBackButton: () => {},
         haptic: () => {}
     };
@@ -36,6 +58,16 @@
     window.myakTelegram = api;
 
     if (!inTelegram) {
+        // На сенсорном устройстве вне Telegram всё равно держим экран
+        // горизонтальным — игра рассчитана именно на такой формат.
+        if (touchView) {
+            ensureRotateOverlay();
+            root.classList.toggle("needs-landscape", window.innerHeight > window.innerWidth);
+            window.addEventListener("resize", () => {
+                root.classList.toggle("needs-landscape", window.innerHeight > window.innerWidth);
+            });
+        }
+
         return;
     }
 
@@ -75,6 +107,64 @@
         }
     }
 
+    function isPortrait() {
+        return window.innerHeight > window.innerWidth;
+    }
+
+    function lockLandscape() {
+        if (!touchView || isPortrait()) {
+            return;
+        }
+
+        // lockOrientation фиксирует ТЕКУЩУЮ ориентацию, поэтому вызываем его
+        // только когда устройство уже повёрнуто в ландшафт (Bot API 8.0+).
+        if (inTelegram) {
+            if (typeof tg.lockOrientation === "function" && tg.isOrientationLocked !== true) {
+                try {
+                    tg.lockOrientation();
+                } catch (error) {
+                    // Старые клиенты Telegram не поддерживают блокировку.
+                }
+            }
+
+            return;
+        }
+
+        // Обычный браузер разрешает screen.orientation.lock только в fullscreen.
+        if (document.fullscreenElement && screen.orientation?.lock) {
+            try {
+                const result = screen.orientation.lock("landscape");
+                result?.catch?.(() => {});
+            } catch (error) {
+                // Поддержка API зависит от браузера.
+            }
+        }
+    }
+
+    function updateOrientation() {
+        if (!touchView) {
+            return;
+        }
+
+        root.classList.toggle("needs-landscape", isPortrait());
+
+        if (isPortrait()) {
+            // Если ориентация уже зафиксирована в портрете, снимаем блокировку,
+            // иначе пользователь физически не сможет повернуть устройство.
+            if (tg.isOrientationLocked === true && typeof tg.unlockOrientation === "function") {
+                try {
+                    tg.unlockOrientation();
+                } catch (error) {
+                    // Блокировки могло и не быть.
+                }
+            }
+
+            return;
+        }
+
+        lockLandscape();
+    }
+
     let backButtonBound = false;
 
     function onBackButton() {
@@ -86,11 +176,26 @@
             if (active) {
                 tg.enableClosingConfirmation?.();
                 tg.requestFullscreen?.();
+                lockLandscape();
             } else {
                 tg.disableClosingConfirmation?.();
             }
         } catch (error) {
             // Старые версии Telegram не поддерживают часть методов.
+        }
+    };
+
+    api.setScrollLocked = (locked) => {
+        try {
+            if (locked) {
+                // В бою свайпы мешают стикам.
+                tg.disableVerticalSwipes?.();
+            } else {
+                // В меню и на паузе свайпы нужны, чтобы листать контент.
+                tg.enableVerticalSwipes?.();
+            }
+        } catch (error) {
+            // Старые версии Telegram игнорируют метод.
         }
     };
 
@@ -138,18 +243,37 @@
     try {
         tg.ready();
         tg.expand();
-        tg.disableVerticalSwipes?.();
+        // Не блокируем вертикальные свайпы в меню: иначе не листается экран
+        // выбора аппарата и не видны кнопки «Начать бой».
+        tg.enableVerticalSwipes?.();
         tg.requestFullscreen?.();
     } catch (error) {
         // Mini App продолжает работать и без fullscreen.
     }
 
+    ensureRotateOverlay();
+    updateOrientation();
     applyViewport();
     applyTheme();
 
-    tg.onEvent?.("viewportChanged", applyViewport);
+    window.addEventListener("resize", () => {
+        applyViewport();
+        updateOrientation();
+    });
+    window.addEventListener("orientationchange", () => {
+        applyViewport();
+        updateOrientation();
+    });
+
+    tg.onEvent?.("viewportChanged", () => {
+        applyViewport();
+        updateOrientation();
+    });
     tg.onEvent?.("safeAreaChanged", applyViewport);
     tg.onEvent?.("contentSafeAreaChanged", applyViewport);
-    tg.onEvent?.("fullscreenChanged", applyViewport);
+    tg.onEvent?.("fullscreenChanged", () => {
+        applyViewport();
+        lockLandscape();
+    });
     tg.onEvent?.("themeChanged", applyTheme);
 })();

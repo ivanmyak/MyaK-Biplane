@@ -171,6 +171,7 @@
         {
             _telegramName = await JS.InvokeAsync<string>("myakTelegram.displayName");
             await JS.InvokeVoidAsync("myakTelegram.setGameActive", false);
+            await JS.InvokeVoidAsync("myakTelegram.setScrollLocked", false);
             await JS.InvokeVoidAsync("myakTelegram.setBackButton", false);
         }
         catch (JSException)
