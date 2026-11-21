@@ -52,16 +52,21 @@ jobs:
           sed -i "s#<base href=\"/\" />#<base href=\"${PAGES_BASE_PATH}\" />#" "$index"
           rm -f "$index.br" "$index.gz"
 
-      # Версия 0.<МИНОР>.-<ПАТЧ>:
+      # Версия 0.<МИНОР>.<ПАТЧ>:
       #   МИНОР — сколько слияний уже сделано в главную ветвь;
-      #   ПАТЧ  — сколько коммитов пришло из последней слитой ветки.
+      #   ПАТЧ  — коммиты в последней слитой ветке ИЛИ прямые коммиты
+      #           в master после последнего слияния. Растёт на каждый коммит.
       - name: Compute project version
         run: |
           merges=$(git rev-list --merges --count HEAD)
           if git rev-parse HEAD^2 >/dev/null 2>&1; then
             commits=$(git rev-list --count HEAD^1..HEAD^2)
           else
-            commits=$(git rev-list --count HEAD~1..HEAD)
+            last_merge=$(git rev-list --merges -n 1 HEAD)
+            if [ -z "$last_merge" ]; then
+              last_merge=$(git rev-list --max-parents=0 HEAD)
+            fi
+            commits=$(git rev-list --count "$last_merge"..HEAD)
           fi
           echo "APP_VERSION=0.${merges}.${commits}" >> "$GITHUB_ENV"
           echo "Project version: 0.${merges}.${commits}"

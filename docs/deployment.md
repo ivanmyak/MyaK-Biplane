@@ -29,6 +29,9 @@ WebSocket — SignalR использует его для соединения.
 
 ### Вариант A. Fly.io (выбранный)
 
+Полное пошаговое руководство (установка flyctl, `fly.toml`, секреты, деплой, восстановление
+удалённых машин): [`fly-deployment.md`](fly-deployment.md).
+
 В корне репозитория лежит `fly.toml`. Он собирает `MyaKBiplane.Server/Dockerfile`,
 слушает внутренний порт `8080`, включает HTTPS и health-check `/health`.
 

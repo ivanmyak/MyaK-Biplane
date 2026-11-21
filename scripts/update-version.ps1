@@ -13,10 +13,16 @@ try {
     # У merge-коммита второй родитель — верхушка слитой ветки.
     $parents = (git rev-list --parents -n 1 HEAD).Trim() -split "\s+"
     if ($parents.Count -ge 3) {
+        # Слияние: коммиты, пришедшие из ветки.
         $commits = (git rev-list --count "$($parents[1])..$($parents[2])").Trim()
     } else {
-        # Обычный коммит в master: считаем его самого.
-        $commits = (git rev-list --count HEAD~1..HEAD).Trim()
+        # Прямой коммит в master: считаем все коммиты после последнего слияния,
+        # чтобы версия увеличивалась на каждую правку, а не застывала.
+        $lastMerge = (git rev-list --merges -n 1 HEAD).Trim()
+        if ([string]::IsNullOrWhiteSpace($lastMerge)) {
+            $lastMerge = (git rev-list --max-parents=0 HEAD).Trim()
+        }
+        $commits = (git rev-list --count "$lastMerge..HEAD").Trim()
     }
 
     $version = "0.$merges.$commits"

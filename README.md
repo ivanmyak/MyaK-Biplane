@@ -183,7 +183,8 @@ dotnet test MyaKBiplane.Tests/MyaKBiplane.Tests.csproj
 `MyaKBiplane.Server` размещается отдельно на Docker-хостинге с HTTPS и WebSocket — без
 него не работает ни сетевой режим, ни матч с ботом.
 
-Пошаговая инструкция: [`docs/deployment.md`](docs/deployment.md). Коротко:
+Пошаговая инструкция: [`docs/deployment.md`](docs/deployment.md). Отдельное руководство по серверу
+на Fly.io (flyctl, `fly.toml`, секреты, восстановление машин): [`docs/fly-deployment.md`](docs/fly-deployment.md). Коротко:
 
 1. Задеплойте сервер на Fly.io из корня репозитория (`fly.toml` уже готов):
 
@@ -207,8 +208,9 @@ dotnet test MyaKBiplane.Tests/MyaKBiplane.Tests.csproj
 `0.<минор>.<патч>`:
 
 - **минор** — количество слияний в главную ветвь (`git rev-list --merges --count`);
-- **патч** — количество коммитов в последней слитой ветке
-  (`git rev-list --count HEAD^1..HEAD^2`).
+- **патч** — коммиты в последней слитой ветке (`HEAD^1..HEAD^2`) либо, если правки шли
+  сразу в master, все коммиты после последнего слияния (`<последний merge>..HEAD`).
+  Благодаря этому версия увеличивается на каждый коммит и не застывает.
 
 Значение вычисляется при деплое в workflow и записывается в `publish/wwwroot/appsettings.json`
 (ключ `App:Version`). Локально по умолчанию отображается `0.0.0`; чтобы получить то же значение,
