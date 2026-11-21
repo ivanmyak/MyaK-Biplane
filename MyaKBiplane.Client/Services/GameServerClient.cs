@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
 using MyaKBiplane.Shared.Contracts;
@@ -13,6 +15,8 @@ public sealed class GameServerClient : IAsyncDisposable
     private readonly NavigationManager _navigation;
     private readonly IConfiguration _configuration;
     private HubConnection? _connection;
+    private readonly object _rttLock = new();
+    private double _rttMilliseconds = -1;
 
     /// <summary>
     /// Создаёт клиент сервера.
@@ -38,6 +42,59 @@ public sealed class GameServerClient : IAsyncDisposable
     public event Action<string>? ConnectionClosed;
 
     /// <summary>
+    /// Последнее измеренное время туда-обратно в миллисекундах. -1 — нет данных.
+    /// </summary>
+    public double RttMilliseconds
+    {
+        get
+        {
+            lock (_rttLock)
+            {
+                return _rttMilliseconds;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Измеряет задержку до сервера через метод хаба Ping.
+    /// </summary>
+    public async Task<double> MeasureRttAsync()
+    {
+        var connection = _connection;
+
+        if (connection is null || connection.State != HubConnectionState.Connected)
+        {
+            return -1;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            await connection.InvokeAsync<string>("Ping");
+            stopwatch.Stop();
+
+            var rtt = stopwatch.Elapsed.TotalMilliseconds;
+
+            lock (_rttLock)
+            {
+                _rttMilliseconds = rtt;
+            }
+
+            return rtt;
+        }
+        catch (Exception)
+        {
+            lock (_rttLock)
+            {
+                _rttMilliseconds = -1;
+            }
+
+            return -1;
+        }
+    }
+
+    /// <summary>
     /// Устанавливает соединение с сервером.
     /// </summary>
     public async Task ConnectAsync()
@@ -48,7 +105,13 @@ public sealed class GameServerClient : IAsyncDisposable
         }
 
         _connection = new HubConnectionBuilder()
-            .WithUrl(BuildHubUri())
+            .WithUrl(BuildHubUri(), options =>
+            {
+                // Только WebSocket. По умолчанию SignalR может тихо откатиться
+                // на SSE/long polling — это добавляет сотни миллисекунд и делает
+                // матч непригодным для живого боя. Если WS недоступен, лучше сразу показать ошибку.
+                options.Transports = HttpTransportType.WebSockets;
+            })
             .Build();
 
         _connection.On<RoomInfo>("RoomUpdated", info => RoomUpdated?.Invoke(info));

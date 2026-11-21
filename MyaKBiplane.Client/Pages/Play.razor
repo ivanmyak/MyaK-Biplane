@@ -60,6 +60,7 @@
             {
                 <span>Код: <strong>@_room.Code</strong></span>
             }
+            <span title="Задержка до сервера, только WebSocket">WS · Ping: @PingLabel</span>
         </div>
     }
 
@@ -230,6 +231,8 @@
     private int _yourScore;
     private int _opponentScore;
     private bool _opponentIsBot;
+    private double _rttMs = -1;
+    private CancellationTokenSource? _rttCts;
 
     [SupplyParameterFromQuery(Name = "mode")]
     public string? Mode { get; set; }
@@ -258,6 +261,8 @@
         : _room is not null && _winnerSlot == _room.YourSlot
             ? "overlay-win"
             : "overlay-loss";
+
+    private string PingLabel => _rttMs < 0 ? "—" : $"{_rttMs:0} мс";
 
     private string PauseText => _room is not null && _room.PausedBySlot == _room.YourSlot
         ? "Вы поставили игру на паузу. Соперник тоже видит это окно."
@@ -365,6 +370,10 @@
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        _rttCts?.Cancel();
+        _rttCts?.Dispose();
+        _rttCts = null;
+
         if (_client is not null)
         {
             _client.RoomUpdated -= OnRoomUpdated;
@@ -419,11 +428,44 @@
                 "join" => await _client.JoinRoomAsync(Code ?? string.Empty, KindName(_kind)),
                 _ => await _client.CreateBotRoomAsync(KindName(_kind))
             };
+
+            _rttCts = new CancellationTokenSource();
+            _ = MeasureRttLoopAsync(_rttCts.Token);
         }
         catch (Exception exception)
         {
             _error = exception.Message;
             await SetScrollLockedAsync(false);
+        }
+    }
+
+    private async Task MeasureRttLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var rtt = await _client!.MeasureRttAsync();
+
+                if (rtt >= 0)
+                {
+                    _rttMs = rtt;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch (Exception)
+            {
+                // Соединение могло закрыться — следующая итерация просто не измерит RTT.
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 
