@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using MyaKBiplane.Server.Hubs;
 using MyaKBiplane.Server.Logging;
 using MyaKBiplane.Server.Rooms;
@@ -67,6 +68,40 @@ app.MapGet("/", () => Results.Ok(new
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapHub<GameHub>("/hubs/game");
+
+// Минимальный WebSocket-echo для диагностики чистого сетевого RTT.
+// Клиент шлёт метку времени, сервер возвращает её как есть: задержка
+// получается без SignalR, игровой симуляции и .NET<->JS-маршаллинга.
+app.Map("/ws/ping", async context =>
+{
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        return;
+    }
+
+    using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    var buffer = new byte[128];
+
+    while (socket.State == WebSocketState.Open)
+    {
+        var result = await socket.ReceiveAsync(
+            new ArraySegment<byte>(buffer), context.RequestAborted);
+
+        if (result.MessageType == WebSocketMessageType.Close)
+        {
+            await socket.CloseAsync(
+                WebSocketCloseStatus.NormalClosure, "bye", context.RequestAborted);
+            break;
+        }
+
+        await socket.SendAsync(
+            new ArraySegment<byte>(buffer, 0, result.Count),
+            result.MessageType,
+            result.EndOfMessage,
+            context.RequestAborted);
+    }
+});
 
 app.Logger.LogInformation(
     "Сервер {Title} {Version} запущен. Протокол: {ProtocolVersion}",

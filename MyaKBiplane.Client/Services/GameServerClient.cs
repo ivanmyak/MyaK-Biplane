@@ -41,6 +41,9 @@ public sealed class GameServerClient : IAsyncDisposable
     /// <summary>Событие разрыва соединения.</summary>
     public event Action<string>? ConnectionClosed;
 
+    /// <summary>Адрес хаба, используется для диагностики чистого WebSocket-RTT.</summary>
+    public Uri HubUri => BuildHubUri();
+
     /// <summary>
     /// Последнее измеренное время туда-обратно в миллисекундах. -1 — нет данных.
     /// </summary>

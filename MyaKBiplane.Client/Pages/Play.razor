@@ -60,7 +60,7 @@
             {
                 <span>Код: <strong>@_room.Code</strong></span>
             }
-            <span title="Задержка до сервера, только WebSocket">WS · Ping: @PingLabel</span>
+            <span title="@RawPingDetails">WS · Ping: @PingLabel · RAW: @RawPingLabel</span>
         </div>
     }
 
@@ -232,6 +232,9 @@
     private int _opponentScore;
     private bool _opponentIsBot;
     private double _rttMs = -1;
+    private double _rawMin = -1;
+    private double _rawAvg = -1;
+    private double _rawMax = -1;
     private CancellationTokenSource? _rttCts;
 
     [SupplyParameterFromQuery(Name = "mode")]
@@ -263,6 +266,12 @@
             : "overlay-loss";
 
     private string PingLabel => _rttMs < 0 ? "—" : $"{_rttMs:0} мс";
+
+    private string RawPingLabel => _rawAvg < 0 ? "—" : $"{_rawAvg:0} мс";
+
+    private string RawPingDetails => _rawAvg < 0
+        ? "Чистый WebSocket-RTT: нет данных"
+        : $"Чистый WebSocket-RTT: мин {_rawMin:0} / ср {_rawAvg:0} / макс {_rawMax:0} мс";
 
     private string PauseText => _room is not null && _room.PausedBySlot == _room.YourSlot
         ? "Вы поставили игру на паузу. Соперник тоже видит это окно."
@@ -431,6 +440,7 @@
 
             _rttCts = new CancellationTokenSource();
             _ = MeasureRttLoopAsync(_rttCts.Token);
+            _ = MeasureRawRttAsync();
         }
         catch (Exception exception)
         {
@@ -466,6 +476,37 @@
             {
                 break;
             }
+        }
+    }
+
+    private async Task MeasureRawRttAsync()
+    {
+        try
+        {
+            var hubUri = _client!.HubUri;
+            var echoUri = new UriBuilder(hubUri)
+            {
+                Scheme = hubUri.Scheme == "https" ? "wss" : "ws",
+                Path = "/ws/ping",
+                Query = string.Empty,
+                Fragment = string.Empty
+            };
+
+            // 10 проб по отдельному echo-сокету: без SignalR и маршаллинга .NET<->JS.
+            var values = await JS.InvokeAsync<double[]>(
+                "myakNetDiag.measure", echoUri.Uri.ToString(), 10, 3000);
+
+            if (values is { Length: >= 3 })
+            {
+                _rawMin = values[0];
+                _rawAvg = values[1];
+                _rawMax = values[2];
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception)
+        {
+            // Диагностика не должна ломать матч.
         }
     }
 
