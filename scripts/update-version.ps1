@@ -1,5 +1,9 @@
 # Вычисляет версию проекта из git-истории и записывает её в appsettings.json.
-# Формат: 0.<количество слияний в master>.<коммиты последней слитой ветки>.
+# Формат: 0.<слияния в master>.<патч>[-dev].
+#   МИНОР: растёт только при слиянии в master;
+#   ПАТЧ:  при слиянии = коммиты слитой ветки, при прямых коммитах — коммиты
+#          после последнего слияния;
+#   -dev:  добавляется для сборок не из master.
 # В CI эту же логику выполняет .github/workflows/deploy-pages.yml.
 
 $ErrorActionPreference = "Stop"
@@ -9,13 +13,23 @@ Push-Location $repo
 
 try {
     $merges = (git rev-list --merges --count HEAD).Trim()
+    $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+    $suffix = ""
 
     # У merge-коммита второй родитель — верхушка слитой ветки.
     $parents = (git rev-list --parents -n 1 HEAD).Trim() -split "\s+"
-    if ($parents.Count -ge 3) {
-        # Слияние: коммиты, пришедшие из ветки.
+
+    if ($branch -ne "master") {
+        $originMaster = (git rev-parse --verify origin/master 2>$null).Trim()
+        $base = if ($originMaster) { "origin/master" } else { "master" }
+        $commits = (git rev-list --count "$base..HEAD").Trim()
+        $suffix = "-dev"
+    }
+    elseif ($parents.Count -ge 3) {
+        # Слияние в master: patch обнуляется и становится числом коммитов ветки.
         $commits = (git rev-list --count "$($parents[1])..$($parents[2])").Trim()
-    } else {
+    }
+    else {
         # Прямой коммит в master: считаем все коммиты после последнего слияния,
         # чтобы версия увеличивалась на каждую правку, а не застывала.
         $lastMerge = (git rev-list --merges -n 1 HEAD).Trim()
@@ -25,7 +39,7 @@ try {
         $commits = (git rev-list --count "$lastMerge..HEAD").Trim()
     }
 
-    $version = "0.$merges.$commits"
+    $version = "0.$merges.$commits$suffix"
     $path = Join-Path $repo "MyaKBiplane.Client/wwwroot/appsettings.json"
     $settings = Get-Content $path -Raw | ConvertFrom-Json
 
