@@ -107,16 +107,37 @@ Origin должен быть **точным**, без пути и без зав�
 
 ## 4. Деплой
 
-Из корня репозитория:
+`flyctl deploy` **всегда читает `fly.toml` из текущей папки** (или из `--config`). Поэтому запускать
+команду нужно из корня репозитория — именно там лежит файл. Это единственный источник правды:
+всё, что изменилось в дашборде, будет перезаписано значениями из файла.
 
 ```powershell
+$fly = "$env:USERPROFILE\.fly\bin\flyctl.exe"
+Set-Location C:\Users\myaki\source\repos\MyaK-Biplane
+
 # --ha=false: одна машина вместо двух. Комнаты живут в памяти процесса,
 # поэтому несколько машин без sticky-сессий не подходят.
 & $fly deploy --app myak-biplane-server --ha=false --yes
 ```
 
-Если ты удалил все машины в дашборде — **этого достаточно, чтобы создать их заново**: `deploy`
-создаёт machine из `fly.toml`. Отдельно «создавать машину» не нужно.
+Если файл лежит в другом месте, укажите его явно:
+
+```powershell
+& $fly deploy --config .\fly.toml --app myak-biplane-server --ha=false --yes
+```
+
+Команда пересобирает Docker-образ из `MyaKBiplane.Server/Dockerfile`, загружает его и обновляет
+машины. Если machines удалены — создаёт новую. Изменения в коде сервера подхватываются этой же
+командой, отдельно ничего делать не нужно.
+
+После деплоя проверьте:
+
+```powershell
+& $fly status --app myak-biplane-server
+& $fly logs --app myak-biplane-server --follow
+```
+
+и `https://myak-biplane-server.fly.dev/health`.
 
 Сменить регион при деплое без правки файла:
 
