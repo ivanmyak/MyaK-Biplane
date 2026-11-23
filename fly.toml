@@ -2,7 +2,7 @@
 # Клиент выкладывается отдельно на GitHub Pages.
 
 app = "myak-biplane-server"
-primary_region = "arn"
+primary_region = "fra"
 
 [build]
   dockerfile = "MyaKBiplane.Server/Dockerfile"
