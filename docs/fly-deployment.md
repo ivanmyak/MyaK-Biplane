@@ -120,6 +120,28 @@ Set-Location C:\Users\myaki\source\repos\MyaK-Biplane
 & $fly deploy --app myak-biplane-server --ha=false --yes
 ```
 
+### Версия сервера
+
+`get-version.ps1` считает версию так же, как CI считает для клиента. При деплое она пишется
+в секрет `App__Version`, и сервер возвращает её в `GET /` — поэтому клиент и сервер показывают
+одинаковую версию. Простой `flyctl deploy` этот секрет не обновит, поэтому **используйте готовый
+скрипт**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/deploy-fly.ps1
+```
+
+Он делает три шага: считает версию, `--stage`-секрет `App__Version`, `fly deploy` из корня
+репозитория. Проверить совпадение можно так:
+
+```powershell
+# версия на сервере
+(Invoke-RestMethod https://myak-biplane-server.fly.dev/).version
+
+# версия клиента на Pages
+(Invoke-RestMethod https://ivanmyak.github.io/MyaK-Biplane/appsettings.json).App.Version
+```
+
 Если файл лежит в другом месте, укажите его явно:
 
 ```powershell

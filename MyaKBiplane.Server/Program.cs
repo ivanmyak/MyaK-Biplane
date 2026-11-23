@@ -18,6 +18,10 @@ if (int.TryParse(port, out var httpPort) && httpPort is > 0 and <= 65535)
 builder.Configuration.AddEnvironmentVariables();
 LoggingProviderFactory.Configure(builder.Logging, builder.Configuration);
 
+// Версия задаётся при деплое через App__Version (см. scripts/deploy-fly.ps1)
+// и совпадает с версией клиента из appsettings.json на GitHub Pages.
+var appVersion = builder.Configuration["App:Version"] ?? GameInfo.Version;
+
 builder.Services.AddSignalR(options =>
 {
     options.EnableDetailedErrors = builder.Environment.IsDevelopment();
@@ -61,7 +65,7 @@ app.UseWebSockets();
 app.MapGet("/", () => Results.Ok(new
 {
     name = GameInfo.Title,
-    version = GameInfo.Version,
+    version = appVersion,
     protocolVersion = GameInfo.ProtocolVersion,
     status = "ok"
 }));
@@ -106,7 +110,7 @@ app.Map("/ws/ping", async context =>
 app.Logger.LogInformation(
     "Сервер {Title} {Version} запущен. Протокол: {ProtocolVersion}",
     GameInfo.Title,
-    GameInfo.Version,
+    appVersion,
     GameInfo.ProtocolVersion);
 
 app.Run();

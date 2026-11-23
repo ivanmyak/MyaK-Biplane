@@ -221,6 +221,13 @@ dotnet test MyaKBiplane.Tests/MyaKBiplane.Tests.csproj
 Чтобы получить `-dev`-сборку, запустите **Deploy client to GitHub Pages** вручную через
 **Run workflow** и выберите нужную ветку.
 
+Сервер отдаёт **ту же версию** в `GET /` — при деплое её записывает `scripts/deploy-fly.ps1`
+в секрет `App__Version`. Поэтому деплоить сервер нужно этим скриптом, а не просто `fly deploy`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/deploy-fly.ps1
+```
+
 Значение вычисляется при деплое в workflow и записывается в `publish/wwwroot/appsettings.json`
 (ключ `App:Version`). Локально по умолчанию отображается `0.0.0`; чтобы получить то же значение,
 запустите:
