@@ -12,6 +12,9 @@ namespace MyaKBiplane.Client.Services;
 /// </summary>
 public sealed class GameServerClient : IAsyncDisposable
 {
+    /// <summary>Сколько раз пробовать подключиться, прежде чем показать ошибку.</summary>
+    private const int ConnectAttempts = 3;
+
     private readonly NavigationManager _navigation;
     private readonly IConfiguration _configuration;
     private HubConnection? _connection;
@@ -98,35 +101,87 @@ public sealed class GameServerClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Устанавливает соединение с сервером.
+    /// Устанавливает соединение с сервером. Делает несколько попыток: на мобильных
+    /// сетях первый запрос часто обрывается (переключение Wi-Fi/LTE, холодный старт сервера).
     /// </summary>
     public async Task ConnectAsync()
     {
-        if (_connection is not null)
+        if (_connection is { State: HubConnectionState.Connected })
         {
             return;
         }
 
-        _connection = new HubConnectionBuilder()
+        if (_connection is not null)
+        {
+            await DisposeConnectionAsync();
+        }
+
+        Exception? lastError = null;
+
+        for (var attempt = 1; attempt <= ConnectAttempts; attempt++)
+        {
+            var connection = CreateConnection();
+
+            try
+            {
+                await connection.StartAsync();
+                _connection = connection;
+                return;
+            }
+            catch (Exception exception)
+            {
+                lastError = exception;
+                await connection.DisposeAsync();
+
+                if (attempt < ConnectAttempts)
+                {
+                    // Короткая пауза перед повтором: даёт сети и машине на Fly время подняться.
+                    await Task.Delay(TimeSpan.FromMilliseconds(400 * attempt));
+                }
+            }
+        }
+
+        throw new InvalidOperationException(DescribeConnectFailure(lastError), lastError);
+    }
+
+    private HubConnection CreateConnection()
+    {
+        var connection = new HubConnectionBuilder()
             .WithUrl(BuildHubUri(), options =>
             {
-                // Только WebSocket. По умолчанию SignalR может тихо откатиться
-                // на SSE/long polling — это добавляет сотни миллисекунд и делает
-                // матч непригодным для живого боя. Если WS недоступен, лучше сразу показать ошибку.
+                // Сразу WebSocket, без HTTP-negotiate: на один запрос меньше,
+                // нет CORS-preflight и работает даже там, где прокси ломает POST.
+                options.SkipNegotiation = true;
                 options.Transports = HttpTransportType.WebSockets;
             })
             .Build();
 
-        _connection.On<RoomInfo>("RoomUpdated", info => RoomUpdated?.Invoke(info));
-        _connection.On<string>("Snapshot", json => SnapshotReceived?.Invoke(json));
-        _connection.On<string>("RoomClosed", reason => RoomClosed?.Invoke(reason));
-        _connection.Closed += error =>
+        connection.On<RoomInfo>("RoomUpdated", info => RoomUpdated?.Invoke(info));
+        connection.On<string>("Snapshot", json => SnapshotReceived?.Invoke(json));
+        connection.On<string>("RoomClosed", reason => RoomClosed?.Invoke(reason));
+        connection.Closed += error =>
         {
             ConnectionClosed?.Invoke(error?.Message ?? "Соединение с сервером закрыто.");
             return Task.CompletedTask;
         };
 
-        await _connection.StartAsync();
+        return connection;
+    }
+
+    /// <summary>
+    /// Объясняет ошибку подключения человеческим языком, сохраняя техническую деталь.
+    /// </summary>
+    private string DescribeConnectFailure(Exception? error)
+    {
+        var host = BuildHubUri().Host;
+        var detail = error?.GetBaseException().Message;
+
+        var text = $"Не удалось связаться с сервером игры ({host}). " +
+                   "Проверьте интернет: если включён VPN или блокировщик — выключите и повторите, " +
+                   "если выключен — попробуйте включить. На мобильной сети сервер может быть недоступен " +
+                   "из-за блокировки провайдера.";
+
+        return string.IsNullOrWhiteSpace(detail) ? text : $"{text} Техническая информация: {detail}";
     }
 
     /// <summary>
@@ -209,15 +264,19 @@ public sealed class GameServerClient : IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync() => await DisposeConnectionAsync();
+
+    private async ValueTask DisposeConnectionAsync()
     {
-        if (_connection is null)
+        var connection = _connection;
+        _connection = null;
+
+        if (connection is null)
         {
             return;
         }
 
-        await _connection.DisposeAsync();
-        _connection = null;
+        await connection.DisposeAsync();
     }
 
     private Uri BuildHubUri()

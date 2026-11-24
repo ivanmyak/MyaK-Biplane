@@ -84,8 +84,15 @@
                 <p class="overlay-eyebrow">Ошибка подключения</p>
                 <h2>Не удалось войти в матч</h2>
                 <p class="overlay-text">@_error</p>
+                @if (!string.IsNullOrEmpty(ServerHealthUrl))
+                {
+                    <p class="overlay-text">
+                        Проверка связи: <a href="@ServerHealthUrl" target="_blank" rel="noreferrer">@ServerHealthUrl</a>
+                    </p>
+                }
                 <div class="overlay-actions">
-                    <button class="button button-primary" @onclick="ExitToMenuAsync">В меню</button>
+                    <button class="button button-primary" @onclick="RetryConnectAsync">Повторить</button>
+                    <button class="button button-ghost" @onclick="ExitToMenuAsync">В меню</button>
                 </div>
             </div>
         </div>
@@ -273,8 +280,18 @@
         ? "Чистый WebSocket-RTT: нет данных"
         : $"Чистый WebSocket-RTT: мин {_rawMin:0} / ср {_rawAvg:0} / макс {_rawMax:0} мс";
 
-    private string PauseText => _room is not null && _room.PausedBySlot == _room.YourSlot
-        ? "Вы поставили игру на паузу. Соперник тоже видит это окно."
+    /// <summary>Адрес проверки доступности сервера — его можно открыть с телефона.</summary>
+    private string ServerHealthUrl => _client is null
+        ? string.Empty
+        : new UriBuilder(_client.HubUri)
+        {
+            Scheme = "https",
+            Path = "/health",
+            Query = string.Empty,
+            Fragment = string.Empty
+        }.Uri.ToString();
+
+    private string PauseText => _room is not null && _room.PausedBySlot == _room.YourSlot        ? "Вы поставили игру на паузу. Соперник тоже видит это окно."
         : "Соперник поставил игру на паузу. Продолжить может любой из вас.";
 
     protected override void OnInitialized()
@@ -427,6 +444,8 @@
             return;
         }
 
+        _error = null;
+
         try
         {
             await _client.ConnectAsync();
@@ -447,6 +466,14 @@
             _error = exception.Message;
             await SetScrollLockedAsync(false);
         }
+    }
+
+    /// <summary>Повторная попытка подключения по кнопке на экране ошибки.</summary>
+    private async Task RetryConnectAsync()
+    {
+        await SetScrollLockedAsync(true);
+        await ConnectAndEnterAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task MeasureRttLoopAsync(CancellationToken cancellationToken)
