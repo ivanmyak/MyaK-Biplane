@@ -5,7 +5,8 @@ using MyaKBiplane.Shared.Contracts;
 namespace MyaKBiplane.Server.Hubs;
 
 /// <summary>
-/// Хаб сетевых матчей: создание комнат, ввод, пауза и реванш.
+/// Легкий хаб сигналинга: создаёт комнаты с кодом и передаёт SDP/ICE между игроками.
+/// Ввод, симуляция, снимки, пауза и реванш идут напрямую между браузерами.
 /// </summary>
 public sealed class GameHub : Hub
 {
@@ -30,14 +31,6 @@ public sealed class GameHub : Hub
     public Task<string> Ping() => Task.FromResult("pong");
 
     /// <summary>
-    /// Создаёт матч с ботом.
-    /// </summary>
-    /// <param name="kind">Класс аппарата игрока.</param>
-    /// <returns>Информация о комнате.</returns>
-    public Task<RoomInfo> CreateBotRoom(string kind) =>
-        _rooms.CreateBotRoomAsync(Context.ConnectionId, kind);
-
-    /// <summary>
     /// Создаёт сетевую комнату.
     /// </summary>
     /// <param name="kind">Класс аппарата хозяина.</param>
@@ -55,27 +48,11 @@ public sealed class GameHub : Hub
         _rooms.JoinRoomAsync(Context.ConnectionId, code, kind);
 
     /// <summary>
-    /// Отправляет ввод игрока.
+    /// Передаёт SDP/ICE сопернику.
     /// </summary>
-    /// <param name="input">Ввод.</param>
-    public void SendInput(InputState input) => _rooms.SendInput(Context.ConnectionId, input);
-
-    /// <summary>
-    /// Переключает паузу.
-    /// </summary>
-    public Task TogglePause() => _rooms.TogglePauseAsync(Context.ConnectionId);
-
-    /// <summary>
-    /// Предлагает реванш.
-    /// </summary>
-    public Task OfferRematch() => _rooms.OfferRematchAsync(Context.ConnectionId);
-
-    /// <summary>
-    /// Отвечает на предложение реванша.
-    /// </summary>
-    /// <param name="accept">Принять ли реванш.</param>
-    public Task RespondRematch(bool accept) =>
-        _rooms.RespondRematchAsync(Context.ConnectionId, accept);
+    /// <param name="payload">JSON сигнала WebRTC.</param>
+    public Task SendSignal(string payload) =>
+        _rooms.RelaySignalAsync(Context.ConnectionId, payload);
 
     /// <summary>
     /// Выходит из комнаты.

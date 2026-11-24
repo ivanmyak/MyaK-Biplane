@@ -190,8 +190,30 @@ https://myak-biplane-server.fly.dev/health  →  {"status":"ok"}
 - **Ping — / ошибка подключения** — WebSocket не проходит. Проверьте HTTPS и что Fly-приложение не
   спит (`flyctl status --app myak-biplane-server`). RAW — означает, что сервер ещё без `/ws/ping`.
 
-Чтобы убрать задержку полностью, нужен client-side prediction: локальная симуляция своего аппарата
-с мгновенным откликом ввода и сверкой по серверным снимкам. Это следующий шаг после диагностики.
+P2P убирает лишний круг до сервера, но предсказания движения (client-side prediction) всё ещё нет:
+при высокой задержке между игроками ввод гостя доходит с задержкой сети. Это следующий шаг.
+
+## Прямая связь между игроками (P2P)
+
+Сетевой матч больше не считается на сервере:
+
+- **Матч с ботом** полностью локальный (`LocalMatchClient`), работает офлайн и не требует сервера.
+- **Сетевой матч** использует WebRTC DataChannel: хозяин комнаты запускает симуляцию
+  (`HostGameSession`, 60 Гц) и рассылает снимки, гость отправляет ввод.
+- **Сервер** только выдаёт код комнаты, помнит двух игроков и ретранслирует SDP/ICE.
+  Если Fly-машина остановится по лимиту триала, уже идущий матч продолжается.
+- В HUD `Ping` — задержка между игроками, `RAW` — задержка до сигналинга.
+
+Ограничения, которые важно проверить на реальных телефонах:
+
+1. Прямая связь требует UDP. На мобильных сетях с CGNAT/симметричным NAT может не пройти —
+   тогда нужен TURN-релей (сейчас не подключён).
+2. Хост должен держать вкладку открытой и активной: при сворачивании браузер душит таймеры.
+3. В Telegram iOS (WKWebView) поддержку DataChannel нужно проверить отдельно на устройстве.
+
+Если соединение не устанавливается за 20 секунд или браузер не получает ICE-кандидатов,
+игроки увидят понятную ошибку вместо вечного «Соединяемся…». В консоли браузера есть
+отладочные строки `MyaK WebRTC signal in/out`.
 
 ## Связанные файлы
 
@@ -203,7 +225,10 @@ https://myak-biplane-server.fly.dev/health  →  {"status":"ok"}
 | `MyaKBiplane.Client/wwwroot/js/game.js` | Сенсорный ввод и прицел, подключение стиков/кнопок. |
 | `MyaKBiplane.Client/Pages/Play.razor` | Разметка сенсорных элементов, режим боя в Telegram. |
 | `MyaKBiplane.Client/Pages/Home.razor` | Чип с именем пользователя Telegram, сброс режима боя. |
-| `MyaKBiplane.Client/Services/GameServerClient.cs` | SignalR только через WebSocket, измерение RTT через `Ping`. |
+| `MyaKBiplane.Client/Services/P2pMatchClient.cs` | SignalR только для сигналинга, прямой DataChannel, измерение RTT между игроками. |
+| `MyaKBiplane.Client/Services/LocalMatchClient.cs` | Матч с ботом целиком в браузере, без сервера. |
+| `MyaKBiplane.Client/wwwroot/js/webrtc.js` | WebRTC DataChannel, STUN, обмен SDP/ICE. |
+| `MyaKBiplane.Game/HostGameSession.cs` | Авторитетная симуляция в браузере хозяина комнаты. |
 | `MyaKBiplane.Client/wwwroot/js/netdiag.js` | 10 WebSocket-echo проб для чистого сетевого RTT. |
 | `MyaKBiplane.Server/Program.cs` | Endpoint `/ws/ping` для диагностики. |
 | `MyaKBiplane.Client/wwwroot/css/app.css` | Fullscreen, безопасные зоны, стили стиков и кнопок. |

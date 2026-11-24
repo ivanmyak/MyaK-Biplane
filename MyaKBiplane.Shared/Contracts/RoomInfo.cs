@@ -3,7 +3,7 @@ namespace MyaKBiplane.Shared.Contracts;
 /// <summary>
 /// Состояние комнаты, которое сервер сообщает каждому игроку отдельно.
 /// </summary>
-public sealed class RoomInfo
+public sealed record RoomInfo
 {
     /// <summary>Код комнаты. Пустой для матча с ботом.</summary>
     public string Code { get; init; } = string.Empty;
@@ -28,6 +28,12 @@ public sealed class RoomInfo
 
     /// <summary>Подключён ли второй игрок.</summary>
     public bool OpponentConnected { get; init; }
+
+    /// <summary>
+    /// Установлено ли прямое соединение между игроками. В серверном матче всегда истина;
+    /// в P2P-матче становится true только после открытия DataChannel.
+    /// </summary>
+    public bool PeerConnected { get; init; } = true;
 
     /// <summary>Кто поставил игру на паузу, или -1.</summary>
     public int PausedBySlot { get; init; } = -1;

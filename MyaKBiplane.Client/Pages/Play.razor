@@ -60,7 +60,7 @@
             {
                 <span>Код: <strong>@_room.Code</strong></span>
             }
-            <span title="@RawPingDetails">WS · Ping: @PingLabel · RAW: @RawPingLabel</span>
+            <span title="@RawPingDetails">@(Mode == "bot" ? "LOCAL" : "P2P") · Ping: @PingLabel · RAW: @RawPingLabel</span>
         </div>
     }
 
@@ -124,6 +124,20 @@
                     </button>
                     <button class="button button-ghost" @onclick="ExitToMenuAsync">Отменить</button>
                 </div>
+            </div>
+        </div>
+    }
+    else if (_room.Status != "waiting" && !_room.PeerConnected)
+    {
+        <div class="game-overlay">
+            <div class="overlay-panel compact">
+                <p class="overlay-eyebrow">Прямое соединение</p>
+                <h2>Соединяемся с соперником…</h2>
+                <p class="overlay-text">
+                    Игра начнётся, когда прямое соединение между игроками будет установлено.
+                    Сервер больше не участвует в матче.
+                </p>
+                <div class="loading-dots"><span></span><span></span><span></span></div>
             </div>
         </div>
     }
@@ -220,7 +234,7 @@
         PropertyNameCaseInsensitive = true
     };
 
-    private GameServerClient? _client;
+    private IMatchClient? _client;
     private DotNetObjectReference<Play>? _dotNetRef;
     private RoomInfo? _room;
     private string? _error;
@@ -229,11 +243,6 @@
     private PlaneKind _kind;
     private bool _started;
     private bool _busy;
-    private double _lastInputSent;
-    private int _sendingInput;
-    private bool _pendingReload;
-    private bool _pendingEject;
-    private bool _pendingParachute;
     private int _winnerSlot = -1;
     private int _yourScore;
     private int _opponentScore;
@@ -281,15 +290,15 @@
         : $"Чистый WebSocket-RTT: мин {_rawMin:0} / ср {_rawAvg:0} / макс {_rawMax:0} мс";
 
     /// <summary>Адрес проверки доступности сервера — его можно открыть с телефона.</summary>
-    private string ServerHealthUrl => _client is null
-        ? string.Empty
-        : new UriBuilder(_client.HubUri)
+    private string ServerHealthUrl => _client?.HubUri is { } hubUri
+        ? new UriBuilder(hubUri)
         {
             Scheme = "https",
             Path = "/health",
             Query = string.Empty,
             Fragment = string.Empty
-        }.Uri.ToString();
+        }.Uri.ToString()
+        : string.Empty;
 
     private string PauseText => _room is not null && _room.PausedBySlot == _room.YourSlot        ? "Вы поставили игру на паузу. Соперник тоже видит это окно."
         : "Соперник поставил игру на паузу. Продолжить может любой из вас.";
@@ -300,7 +309,14 @@
             ? parsed
             : PlaneKind.Biplane;
 
-        _client = new GameServerClient(Navigation, Configuration);
+        // Матч с ботом считается локально; сетевой матч идёт напрямую между игроками.
+        // Сервер в обоих случаях не участвует в расчёте игры.
+        _client = Mode switch
+        {
+            null or "bot" => new LocalMatchClient(_kind),
+            _ => new P2pMatchClient(Navigation, Configuration, JS)
+        };
+
         _client.RoomUpdated += OnRoomUpdated;
         _client.SnapshotReceived += OnSnapshotReceived;
         _client.RoomClosed += OnRoomClosed;
@@ -334,49 +350,10 @@
     {
         if (_client is null || _room?.Status != "playing")
         {
-            _pendingReload = false;
-            _pendingEject = false;
-            _pendingParachute = false;
             return _latestSnapshot;
         }
 
-        _pendingReload |= input.Reload;
-        _pendingEject |= input.Eject;
-        _pendingParachute |= input.Parachute;
-
-        // Разовые нажатия (R/E/Пробел) нельзя терять между кадрами отправки: клиент
-        // присылает их один раз, а ввод уходит на сервер примерно 30 раз в секунду.
-        var oneShot = _pendingReload || _pendingEject || _pendingParachute;
-
-        if ((oneShot || timestamp - _lastInputSent >= 33d)
-            && Interlocked.CompareExchange(ref _sendingInput, 1, 0) == 0)
-        {
-            _lastInputSent = timestamp;
-
-            var payload = oneShot
-                ? new InputState
-                {
-                    Thrust = input.Thrust,
-                    Turn = input.Turn,
-                    MoveX = input.MoveX,
-                    MoveY = input.MoveY,
-                    AimX = input.AimX,
-                    AimY = input.AimY,
-                    Fire = input.Fire,
-                    Ability = input.Ability,
-                    Reload = _pendingReload,
-                    Eject = _pendingEject,
-                    Parachute = _pendingParachute
-                }
-                : input;
-
-            _pendingReload = false;
-            _pendingEject = false;
-            _pendingParachute = false;
-            _ = SendInputAsync(payload);
-        }
-
-        return _latestSnapshot;
+        return _client.Tick(input, timestamp);
     }
 
     /// <summary>
@@ -457,9 +434,17 @@
                 _ => await _client.CreateBotRoomAsync(KindName(_kind))
             };
 
-            _rttCts = new CancellationTokenSource();
-            _ = MeasureRttLoopAsync(_rttCts.Token);
-            _ = MeasureRawRttAsync();
+            // Класс аппарата берём из ответа сервера: даже если параметр ссылки потерялся,
+            // управление и кнопки будут соответствовать реальному аппарату в матче.
+            ApplyKindFromRoom(_room);
+
+            // Диагностика задержки нужна только в сетевом матче.
+            if (_client.HubUri is not null && _rttCts is null)
+            {
+                _rttCts = new CancellationTokenSource();
+                _ = MeasureRttLoopAsync(_rttCts.Token);
+                _ = MeasureRawRttAsync();
+            }
         }
         catch (Exception exception)
         {
@@ -510,7 +495,11 @@
     {
         try
         {
-            var hubUri = _client!.HubUri;
+            if (_client?.HubUri is not { } hubUri)
+            {
+                return;
+            }
+
             var echoUri = new UriBuilder(hubUri)
             {
                 Scheme = hubUri.Scheme == "https" ? "wss" : "ws",
@@ -559,26 +548,6 @@
         catch (JSException)
         {
             // Вне Telegram свайпы не управляются.
-        }
-    }
-
-    private async Task SendInputAsync(InputState input)
-    {
-        try
-        {
-            await _client!.SendInputAsync(input);
-        }
-        catch (Exception exception)
-        {
-            _ = InvokeAsync(() =>
-            {
-                _error = exception.Message;
-                StateHasChanged();
-            });
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _sendingInput, 0);
         }
     }
 
@@ -655,11 +624,32 @@
         _ = InvokeAsync(async () =>
         {
             _room = info;
+            ApplyKindFromRoom(info);
             // На паузе/финише оверлей может быть выше экрана — свайпы нужны,
             // чтобы его прокрутить. В живом бою они мешают экранным стикам.
             await SetScrollLockedAsync(info.Status == "playing");
             StateHasChanged();
         });
+    }
+
+    /// <summary>
+    /// Приводит класс аппарата к тому, который выдал сервер: источник правды — матч,
+    /// а не параметр ссылки.
+    /// </summary>
+    private void ApplyKindFromRoom(RoomInfo? info)
+    {
+        if (info is null)
+        {
+            return;
+        }
+
+        var name = info.YourSlot == 0 ? info.HostKind : info.GuestKind;
+
+        if (!string.IsNullOrWhiteSpace(name)
+            && Enum.TryParse<PlaneKind>(name, ignoreCase: true, out var kind))
+        {
+            _kind = kind;
+        }
     }
 
     private void OnSnapshotReceived(string json)

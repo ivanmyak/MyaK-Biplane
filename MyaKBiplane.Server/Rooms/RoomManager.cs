@@ -7,7 +7,8 @@ using MyaKBiplane.Shared.Contracts;
 namespace MyaKBiplane.Server.Rooms;
 
 /// <summary>
-/// Хранит активные комнаты и связывает их с подключениями SignalR.
+/// Реестр активных P2P-комнат. Сервер выдаёт коды, помнит игроков и ретранслирует
+/// сигналы WebRTC; расчёт матча целиком происходит в браузере хозяина комнаты.
 /// </summary>
 public sealed class RoomManager
 {
@@ -33,35 +34,7 @@ public sealed class RoomManager
     }
 
     /// <summary>
-    /// Создаёт матч с ботом и сразу запускает его.
-    /// </summary>
-    /// <param name="connectionId">Подключение игрока.</param>
-    /// <param name="kindName">Класс аппарата игрока.</param>
-    /// <returns>Информация о комнате.</returns>
-    public async Task<RoomInfo> CreateBotRoomAsync(string connectionId, string kindName)
-    {
-        await LeaveInternalAsync(connectionId, notifyOpponent: false);
-
-        var kind = ParseKind(kindName);
-        var room = CreateRoom(
-            code: string.Empty,
-            mode: "bot",
-            hostConnectionId: connectionId,
-            hostKind: kind,
-            guestConnectionId: null,
-            guestKind: GameWorld.Opposite(kind));
-
-        _roomsByConnection[connectionId] = room;
-        _logger.LogInformation(
-            "Создан матч с ботом: подключение {ConnectionId}, класс {Kind}",
-            connectionId,
-            kind);
-
-        return room.BuildInfo(0);
-    }
-
-    /// <summary>
-    /// Создаёт сетевую комнату и ждёт второго игрока.
+    /// Создаёт комнату и ждёт второго игрока.
     /// </summary>
     /// <param name="connectionId">Подключение хозяина.</param>
     /// <param name="kindName">Класс аппарата хозяина.</param>
@@ -72,13 +45,12 @@ public sealed class RoomManager
 
         var kind = ParseKind(kindName);
         var code = CreateCode();
-        var room = CreateRoom(
+        var room = new MatchRoom(
             code,
-            mode: "online",
-            hostConnectionId: connectionId,
-            hostKind: kind,
-            guestConnectionId: null,
-            guestKind: GameWorld.Opposite(kind));
+            connectionId,
+            kind,
+            _hub,
+            _loggerFactory.CreateLogger<MatchRoom>());
 
         _roomsByCode[code] = room;
         _roomsByConnection[connectionId] = room;
@@ -92,7 +64,7 @@ public sealed class RoomManager
     }
 
     /// <summary>
-    /// Присоединяет игрока к сетевой комнате.
+    /// Присоединяет игрока к комнате по коду.
     /// </summary>
     /// <param name="connectionId">Подключение гостя.</param>
     /// <param name="code">Код комнаты.</param>
@@ -124,80 +96,24 @@ public sealed class RoomManager
             normalizedCode,
             kind);
 
+        // Хост узнаёт о госте и начинает WebRTC-предложение.
         await room.NotifyRoomChangedAsync();
         return info;
     }
 
     /// <summary>
-    /// Сохраняет ввод игрока.
+    /// Передаёт SDP/ICE сопернику по комнате игрока.
     /// </summary>
-    /// <param name="connectionId">Подключение игрока.</param>
-    /// <param name="input">Ввод.</param>
-    public void SendInput(string connectionId, InputState input)
+    /// <param name="connectionId">Отправитель.</param>
+    /// <param name="payload">JSON сигнала.</param>
+    public Task RelaySignalAsync(string connectionId, string payload)
     {
-        if (!_roomsByConnection.TryGetValue(connectionId, out var room))
+        if (_roomsByConnection.TryGetValue(connectionId, out var room))
         {
-            return;
+            return room.RelaySignalAsync(connectionId, payload);
         }
 
-        if (room.GetSlot(connectionId) is null)
-        {
-            return;
-        }
-
-        room.SetInput(connectionId, input);
-    }
-
-    /// <summary>
-    /// Переключает паузу в комнате игрока.
-    /// </summary>
-    /// <param name="connectionId">Подключение игрока.</param>
-    public async Task TogglePauseAsync(string connectionId)
-    {
-        if (!_roomsByConnection.TryGetValue(connectionId, out var room))
-        {
-            return;
-        }
-
-        if (room.TogglePause(connectionId))
-        {
-            await room.NotifyRoomChangedAsync();
-        }
-    }
-
-    /// <summary>
-    /// Предлагает реванш.
-    /// </summary>
-    /// <param name="connectionId">Подключение игрока.</param>
-    public async Task OfferRematchAsync(string connectionId)
-    {
-        if (!_roomsByConnection.TryGetValue(connectionId, out var room))
-        {
-            return;
-        }
-
-        if (room.OfferRematch(connectionId))
-        {
-            await room.NotifyRoomChangedAsync();
-        }
-    }
-
-    /// <summary>
-    /// Отвечает на предложение реванша.
-    /// </summary>
-    /// <param name="connectionId">Подключение игрока.</param>
-    /// <param name="accept">Принять ли реванш.</param>
-    public async Task RespondRematchAsync(string connectionId, bool accept)
-    {
-        if (!_roomsByConnection.TryGetValue(connectionId, out var room))
-        {
-            return;
-        }
-
-        if (room.RespondRematch(connectionId, accept))
-        {
-            await room.NotifyRoomChangedAsync();
-        }
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -214,25 +130,6 @@ public sealed class RoomManager
     public Task DisconnectAsync(string connectionId) =>
         LeaveInternalAsync(connectionId, notifyOpponent: true);
 
-    private MatchRoom CreateRoom(
-        string code,
-        string mode,
-        string hostConnectionId,
-        PlaneKind hostKind,
-        string? guestConnectionId,
-        PlaneKind guestKind)
-    {
-        return new MatchRoom(
-            code,
-            mode,
-            hostConnectionId,
-            hostKind,
-            guestConnectionId,
-            guestKind,
-            _hub,
-            _loggerFactory.CreateLogger<MatchRoom>());
-    }
-
     private async Task LeaveInternalAsync(string connectionId, bool notifyOpponent)
     {
         if (!_roomsByConnection.TryRemove(connectionId, out var room))
@@ -240,9 +137,7 @@ public sealed class RoomManager
             return;
         }
 
-        var otherConnectionId = room.HostConnectionId == connectionId
-            ? room.GuestConnectionId
-            : room.HostConnectionId;
+        var otherConnectionId = room.GetOtherConnectionId(connectionId);
 
         if (otherConnectionId is not null)
         {
