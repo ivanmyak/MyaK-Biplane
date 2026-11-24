@@ -15,6 +15,9 @@ public sealed class GameServerClient : IAsyncDisposable
     /// <summary>Сколько раз пробовать подключиться, прежде чем показать ошибку.</summary>
     private const int ConnectAttempts = 3;
 
+    /// <summary>Сколько ждать одну попытку: мобильная сеть может «повесить» запрос без ответа.</summary>
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(8);
+
     private readonly NavigationManager _navigation;
     private readonly IConfiguration _configuration;
     private HubConnection? _connection;
@@ -124,7 +127,17 @@ public sealed class GameServerClient : IAsyncDisposable
 
             try
             {
-                await connection.StartAsync();
+                var start = connection.StartAsync();
+
+                if (await Task.WhenAny(start, Task.Delay(ConnectTimeout)) != start)
+                {
+                    throw new TimeoutException(
+                        $"Сервер не ответил за {ConnectTimeout.TotalSeconds:0} с.");
+                }
+
+                // Дожидаемся результата: если старт завершился ошибкой, она уйдёт в catch.
+                await start;
+
                 _connection = connection;
                 return;
             }
