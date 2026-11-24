@@ -36,7 +36,10 @@ try {
     & $fly deploy --app $app --ha=false --yes
     if ($LASTEXITCODE -ne 0) { throw "Fly deploy failed" }
 
+    # Статус — только для информации: fly status возвращает 1, если машина ещё
+    # просыпается или на trial-аккаунте остановлена, и это не ошибка деплоя.
     & $fly status --app $app
+    exit 0
 }
 finally {
     Pop-Location
