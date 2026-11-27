@@ -71,7 +71,7 @@ public sealed class GameBalance
     public const float RespawnDelay = 2.5f;
 
     /// <summary>Количество уничтожений, необходимое для победы в матче.</summary>
-    public const int ScoreToWin = 5;
+    public const int ScoreToWin = 10;
 
     /// <summary>Радиус лётчика: 1.7 радиуса пули биплана.</summary>
     public const float PilotRadius = 7.65f;

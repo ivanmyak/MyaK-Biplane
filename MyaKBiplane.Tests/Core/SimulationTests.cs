@@ -869,10 +869,10 @@ public sealed class BotAndSessionTests
     }
 
     /// <summary>
-    /// Пять уничтожений завершают матч и определяют победителя.
+    /// Десять уничтожений завершают матч и определяют победителя.
     /// </summary>
     [Fact]
-    public void FiveKills_FinishMatch_AndSetWinner()
+    public void TenKills_FinishMatch_AndSetWinner()
     {
         var world = new GameWorld(seed: 31);
         world.Reset(PlaneKind.Biplane, PlaneKind.Pterodactyl, secondIsBot: false);
