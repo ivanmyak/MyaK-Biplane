@@ -609,7 +609,30 @@ html.telegram-webapp .game-shell {
 }
 
 .room-code-input {
-    text-transform: uppercase;
+    text-transform: none;
+}
+
+.code-area {
+    display: block;
+    width: 100%;
+    max-width: 32rem;
+    margin-top: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--surface-border-strong);
+    border-radius: 0.7rem;
+    background: var(--surface-strong);
+    color: var(--text);
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    resize: vertical;
+    overflow-wrap: anywhere;
+}
+
+.code-area:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .menu-error {

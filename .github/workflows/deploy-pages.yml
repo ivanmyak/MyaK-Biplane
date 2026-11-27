@@ -24,8 +24,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # SERVER_BASE_URL может храниться как переменная окружения github-pages.
-    # Без этой строки vars.SERVER_BASE_URL в build-джобе пустая.
     environment: github-pages
     steps:
       - name: Checkout
@@ -87,31 +85,11 @@ jobs:
           echo "APP_VERSION=$version" >> "$GITHUB_ENV"
           echo "Project version: $version"
 
-      - name: Configure game server
-        env:
-          SERVER_BASE_URL: ${{ vars.SERVER_BASE_URL }}
+      - name: Write client version
         run: |
-          if [ -z "$SERVER_BASE_URL" ]; then
-            echo "::error::Не задана переменная SERVER_BASE_URL."
-            echo "Settings → Secrets and variables → Actions → Variables:"
-            echo "создайте переменную на уровне репозитория или окружения github-pages."
-            echo "Значение — HTTPS-адрес MyaKBiplane.Server, например https://myak-biplane.example.com"
-            exit 1
-          fi
-
-          case "$SERVER_BASE_URL" in
-            https://*) ;;
-            *)
-              echo "::error::SERVER_BASE_URL должен начинаться с https:// — GitHub Pages работает по HTTPS."
-              exit 1
-              ;;
-          esac
-
+          # Сервер сигналинга не нужен: версия — единственное, что подставляется в клиент.
           cat > publish/wwwroot/appsettings.json <<EOF
           {
-            "Server": {
-              "BaseUrl": "$SERVER_BASE_URL"
-            },
             "App": {
               "Version": "$APP_VERSION"
             }

@@ -59,10 +59,10 @@
         }
         else if (_view == "online")
         {
-            <h2 class="step-title">Сетевая игра в одной сети</h2>
+            <h2 class="step-title">Сетевая игра без сервера</h2>
             <p class="step-hint">
-                Создайте комнату и передайте код сопернику. Хозяин комнаты может
-                изменить правила боя — второй игрок увидит их перед началом.
+                Хост создаёт код приглашения, гость возвращает код ответа. Сервер не нужен:
+                достаточно этого сайта на GitHub Pages. Коды нужно обменять через чат.
             </p>
             <div class="menu-actions">
                 <button class="button button-primary" @onclick="ShowHost">
@@ -78,7 +78,9 @@
         {
             <h2 class="step-title">Комната: выберите свой аппарат</h2>
             @AircraftPicker()
-            <p class="step-hint">После создания комнаты покажите сопернику её код.</p>
+            <p class="step-hint">
+                После создания комнаты игра покажет код приглашения — передайте его сопернику.
+            </p>
 
             <label class="check-row">
                 <input type="checkbox" @bind="_customSettings" />
@@ -122,13 +124,13 @@
         else if (_view == "join")
         {
             <h2 class="step-title">Присоединение к комнате</h2>
-            <label class="field-label" for="room-code">Код комнаты</label>
-            <input id="room-code"
-                   class="text-input room-code-input"
-                   maxlength="6"
-                   autocomplete="off"
-                   @bind="_joinCode"
-                   @bind:event="oninput" />
+            <label class="field-label" for="room-code">Код приглашения от хозяина</label>
+            <textarea id="room-code"
+                      class="code-area room-code-input"
+                      rows="4"
+                      autocomplete="off"
+                      @bind="_joinCode"
+                      @bind:event="oninput"></textarea>
             <h2 class="step-title">Выберите свой аппарат</h2>
             @AircraftPicker()
             <div class="menu-actions">
@@ -182,7 +184,7 @@
 
     private string ThemeIcon => _theme == "light" ? "☾" : "☀";
 
-    private bool CanJoin => _joinCode.Trim().Length >= 4;
+    private bool CanJoin => _joinCode.Trim().StartsWith("MYAK1:", StringComparison.Ordinal);
 
     /// <inheritdoc />
     protected override void OnInitialized()
@@ -303,18 +305,19 @@
             $"&eject={(settings.AllowEjection ? "true" : "false")}");
     }
 
-    private void StartJoin()
+    private async Task StartJoin()
     {
-        var code = _joinCode.Trim().ToUpperInvariant();
+        var code = _joinCode.Trim();
 
-        if (code.Length < 4)
+        if (!code.StartsWith("MYAK1:", StringComparison.Ordinal))
         {
-            _error = "Введите код комнаты.";
+            _error = "Вставьте код приглашения целиком.";
             return;
         }
 
-        Navigation.NavigateTo(
-            $"{Navigation.BaseUri}play?mode=join&kind={KindName(_kind)}&code={Uri.EscapeDataString(code)}");
+        // Код длинный — передаём его через sessionStorage, а не через URL.
+        await JS.InvokeVoidAsync("sessionStorage.setItem", "myakJoinCode", code);
+        Navigation.NavigateTo($"{Navigation.BaseUri}play?mode=join&kind={KindName(_kind)}");
     }
 
     private RenderFragment AircraftPicker() =>

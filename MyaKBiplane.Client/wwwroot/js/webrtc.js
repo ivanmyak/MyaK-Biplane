@@ -1,6 +1,6 @@
 /*
  * Прямое соединение между браузерами через WebRTC DataChannel.
- * Сервер используется только для обмена SDP/ICE — внутри матча он не участвует.
+ * Сервер сигналинга не нужен: SDP и ICE-кандидаты игроки передают кодами вручную.
  */
 (() => {
     "use strict";
@@ -15,8 +15,7 @@
     let dotNetRef = null;
     let isHost = false;
     let closed = true;
-    let pendingCandidates = [];
-    let candidateCount = 0;
+    let gatheredCandidates = [];
 
     function notify(method, value) {
         if (!dotNetRef) {
@@ -31,11 +30,6 @@
         } catch (error) {
             // Компонент мог быть выгружен — соединение всё равно закрываем.
         }
-    }
-
-    function sendSignal(payload) {
-        console.debug("MyaK WebRTC signal out", payload.type);
-        notify("OnWebRtcSignal", JSON.stringify(payload));
     }
 
     function setupChannel(dataChannel) {
@@ -66,14 +60,43 @@
         };
     }
 
+    function waitForIce(pc, timeoutMs = 12000) {
+        if (pc.iceGatheringState === "complete") {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+            let finished = false;
+
+            const finish = () => {
+                if (finished) {
+                    return;
+                }
+
+                finished = true;
+                pc.removeEventListener("icegatheringstatechange", check);
+                clearTimeout(timer);
+                resolve();
+            };
+
+            const check = () => {
+                if (pc.iceGatheringState === "complete") {
+                    finish();
+                }
+            };
+
+            const timer = setTimeout(finish, timeoutMs);
+            pc.addEventListener("icegatheringstatechange", check);
+        });
+    }
+
     function start(host, ref) {
         close();
 
         isHost = host;
         dotNetRef = ref;
         closed = false;
-        pendingCandidates = [];
-        candidateCount = 0;
+        gatheredCandidates = [];
 
         if (typeof RTCPeerConnection === "undefined") {
             notify("OnWebRtcDisconnected", "Этот браузер не поддерживает прямое соединение");
@@ -83,27 +106,14 @@
         connection = new RTCPeerConnection({ iceServers });
 
         connection.onicecandidate = (event) => {
-            if (closed) {
+            if (closed || !event.candidate) {
                 return;
             }
 
-            if (!event.candidate) {
-                if (candidateCount === 0) {
-                    notify("OnWebRtcDisconnected",
-                        "Браузер не нашёл сетевой адрес для прямого соединения. Проверьте настройки сети.");
-                }
-                return;
-            }
-
-            candidateCount++;
-            const candidate = event.candidate;
-            sendSignal({
-                type: "candidate",
-                candidate: {
-                    candidate: candidate.candidate,
-                    sdpMid: candidate.sdpMid,
-                    sdpMLineIndex: candidate.sdpMLineIndex
-                }
+            gatheredCandidates.push({
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex
             });
         };
 
@@ -124,65 +134,90 @@
         }
     }
 
-    async function createOffer() {
+    function parseRtc(code) {
+        const bundle = typeof code === "string" ? JSON.parse(code) : code;
+        const rtc = typeof bundle.rtc === "string"
+            ? JSON.parse(bundle.rtc)
+            : (bundle.rtc || bundle);
+
+        if (!rtc || !rtc.sdp) {
+            throw new Error("В коде нет SDP");
+        }
+
+        return { bundle, rtc };
+    }
+
+    async function addCandidates(candidates) {
+        for (const candidate of candidates || []) {
+            try {
+                await connection.addIceCandidate(candidate);
+            } catch (error) {
+                // Ненужные кандидаты можно пропустить.
+            }
+        }
+    }
+
+    async function createOfferCode() {
         if (closed || !isHost || !connection) {
-            return;
+            throw new Error("Соединение не готово");
         }
 
         try {
             const offer = await connection.createOffer();
             await connection.setLocalDescription(offer);
-            sendSignal({ type: "description", sdp: connection.localDescription });
+            await waitForIce(connection);
+
+            return JSON.stringify({
+                type: "offer",
+                sdp: connection.localDescription.sdp,
+                candidates: gatheredCandidates
+            });
         } catch (error) {
-            notify("OnWebRtcDisconnected", "Не удалось создать предложение соединения");
+            console.error("MyaK WebRTC: createOfferCode", error);
+            notify("OnWebRtcDisconnected", "Не удалось создать код приглашения");
+            throw error;
         }
     }
 
-    async function handleSignal(json) {
-        if (closed || !connection) {
-            return;
+    async function createAnswerCode(code) {
+        if (closed || isHost || !connection) {
+            throw new Error("Соединение не готово");
         }
 
-        let message;
-
         try {
-            message = typeof json === "string" ? JSON.parse(json) : json;
+            const { rtc } = parseRtc(code);
+            await connection.setRemoteDescription({ type: "offer", sdp: rtc.sdp });
+            await addCandidates(rtc.candidates);
+
+            const answer = await connection.createAnswer();
+            await connection.setLocalDescription(answer);
+            await waitForIce(connection);
+
+            return JSON.stringify({
+                type: "answer",
+                sdp: connection.localDescription.sdp,
+                candidates: gatheredCandidates
+            });
         } catch (error) {
-            return;
+            console.error("MyaK WebRTC: createAnswerCode", error);
+            notify("OnWebRtcDisconnected", "Не удалось создать код ответа");
+            throw error;
+        }
+    }
+
+    async function acceptAnswerCode(code) {
+        if (closed || !isHost || !connection) {
+            throw new Error("Соединение не готово");
         }
 
-        console.debug("MyaK WebRTC signal in", message.type);
-
         try {
-            if (message.type === "ready") {
-                // Гость готов принимать предложение — хост может создавать offer.
-                notify("OnPeerReady");
-                return;
-            }
-
-            if (message.type === "description" && message.sdp) {
-                await connection.setRemoteDescription(message.sdp);
-
-                for (const candidate of pendingCandidates) {
-                    await connection.addIceCandidate(candidate);
-                }
-                pendingCandidates = [];
-
-                if (message.sdp.type === "offer") {
-                    const answer = await connection.createAnswer();
-                    await connection.setLocalDescription(answer);
-                    sendSignal({ type: "description", sdp: connection.localDescription });
-                }
-            } else if (message.type === "candidate" && message.candidate) {
-                if (connection.remoteDescription) {
-                    await connection.addIceCandidate(message.candidate);
-                } else {
-                    // Кандидат пришёл раньше SDP — дождёмся описания.
-                    pendingCandidates.push(message.candidate);
-                }
-            }
+            const { rtc } = parseRtc(code);
+            await connection.setRemoteDescription({ type: "answer", sdp: rtc.sdp });
+            await addCandidates(rtc.candidates);
         } catch (error) {
-            notify("OnWebRtcDisconnected", "Ошибка при установке прямого соединения");
+            console.error("MyaK WebRTC: acceptAnswerCode", error);
+            notify("OnWebRtcDisconnected", "Не удалось принять код ответа");
+            throw error;
         }
     }
 
@@ -212,7 +247,7 @@
             connection = null;
         }
 
-        pendingCandidates = [];
+        gatheredCandidates = [];
         dotNetRef = null;
     }
 
@@ -226,9 +261,7 @@
             channel: channel ? channel.readyState : null,
             localDescription: connection && connection.localDescription ? connection.localDescription.type : null,
             remoteDescription: connection && connection.remoteDescription ? connection.remoteDescription.type : null,
-            localCandidates: connection && connection.localDescription
-                ? (connection.localDescription.sdp.match(/a=candidate/g) || []).length
-                : 0,
+            localCandidates: gatheredCandidates.length,
             remoteCandidates: connection && connection.remoteDescription
                 ? (connection.remoteDescription.sdp.match(/a=candidate/g) || []).length
                 : 0
@@ -237,8 +270,9 @@
 
     window.myakWebrtc = {
         start,
-        createOffer,
-        handleSignal,
+        createOfferCode,
+        createAnswerCode,
+        acceptAnswerCode,
         send,
         close,
         debugState

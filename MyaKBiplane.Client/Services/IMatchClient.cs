@@ -3,11 +3,10 @@ using MyaKBiplane.Shared.Contracts;
 namespace MyaKBiplane.Client.Services;
 
 /// <summary>
-/// Матч, который ведёт клиент: сетевой через SignalR или локальный с ботом.
+/// Матч, который ведёт клиент: локальный с ботом или P2P без сервера.
 /// </summary>
 /// <remarks>
 /// Общий интерфейс нужен, чтобы страница боя не знала, где считается симуляция.
-/// Позже сюда же ляжет P2P-матч, где хостом выступает браузер игрока.
 /// </remarks>
 public interface IMatchClient : IAsyncDisposable
 {
@@ -24,11 +23,11 @@ public interface IMatchClient : IAsyncDisposable
     event Action<string>? ConnectionClosed;
 
     /// <summary>
-    /// Адрес хаба для диагностики задержки. <c>null</c>, если матч локальный.
+    /// Адрес хаба для диагностики задержки. Всегда <c>null</c>: сервер сигналинга не используется.
     /// </summary>
     Uri? HubUri { get; }
 
-    /// <summary>Устанавливает соединение с сервером. Для локального матча ничего не делает.</summary>
+    /// <summary>Устанавливает соединение. Для локального и P2P-матча ничего не делает.</summary>
     Task ConnectAsync();
 
     /// <summary>Создаёт матч с ботом.</summary>
@@ -70,8 +69,24 @@ public interface IMatchClient : IAsyncDisposable
     Task LeaveRoomAsync();
 
     /// <summary>
-    /// Измеряет задержку до сервера. Для локального матча возвращает -1.
+    /// Измеряет задержку до соперника через DataChannel. Для локального матча возвращает -1.
     /// </summary>
-    /// <returns>Задержка в миллисекундах или -1.</returns>
     Task<double> MeasureRttAsync();
+}
+
+/// <summary>
+/// Матч, в котором SDP-предложение и ответ передаются игроками вручную.
+/// </summary>
+/// <remarks>
+/// Сервер сигналинга не нужен: достаточно GitHub Pages. Коды содержат SDP,
+/// ICE-кандидаты, версию клиента и правила комнаты.
+/// </remarks>
+public interface IManualMatchClient : IMatchClient
+{
+    /// <summary>Код, который нужно передать сопернику (offer у хоста, answer у гостя).</summary>
+    string? OutgoingCode { get; }
+
+    /// <summary>Принимает код соперника. Хост вводит answer, гость получает offer через <see cref="IMatchClient.JoinRoomAsync"/>.</summary>
+    /// <param name="code">Код соперника.</param>
+    Task AcceptCodeAsync(string code);
 }

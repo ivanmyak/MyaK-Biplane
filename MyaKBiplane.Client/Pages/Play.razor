@@ -115,7 +115,59 @@
             </div>
         </div>
     }
-    else if (_room.Status == "waiting" && !_warmupActive)
+    else if (_manual is not null && _room is not null && !_room.PeerConnected && !_warmupActive)
+    {
+        <div class="game-overlay">
+            <div class="overlay-panel">
+                <p class="overlay-eyebrow">@(Mode == "host" ? "Шаг 1 · хост" : "Шаг 2 · гость")</p>
+                <h2>@(Mode == "host" ? "Код приглашения" : "Код ответа")</h2>
+                <p class="overlay-text">
+                    @if (Mode == "host")
+                    {
+                        <text>Отправьте этот код сопернику. Когда он вернёт вам код ответа, вставьте его ниже.</text>
+                    }
+                    else
+                    {
+                        <text>Отправьте этот код хозяину комнаты. После этого соединение установится само.</text>
+                    }
+                </p>
+
+                <textarea class="code-area" rows="3" readonly>@_manual.OutgoingCode</textarea>
+
+                <div class="overlay-actions">
+                    <button class="button button-secondary" @onclick="CopyManualCodeAsync">
+                        Скопировать код
+                    </button>
+                </div>
+
+                @if (Mode == "host")
+                {
+                    <label class="field-label" for="answer-code">Код ответа от соперника</label>
+                    <textarea id="answer-code" class="code-area" rows="3"
+                              @bind="_answerCode" @bind:event="oninput"></textarea>
+                    <div class="overlay-actions">
+                        <button class="button button-primary"
+                                disabled="@(string.IsNullOrWhiteSpace(_answerCode))"
+                                @onclick="AcceptAnswerAsync">
+                            Подключить соперника
+                        </button>
+                        <button class="button button-ghost" @onclick="StartWarmupAsync">
+                            Тренировка с ботом
+                        </button>
+                        <button class="button button-ghost" @onclick="ExitToMenuAsync">Отменить</button>
+                    </div>
+                }
+
+                @RulesPanel(_room, Mode == "host" ? "Правила комнаты" : "Хозяин изменил правила")
+
+                @if (!string.IsNullOrWhiteSpace(_kindAdjustedNotice))
+                {
+                    <p class="overlay-notice">@_kindAdjustedNotice</p>
+                }
+            </div>
+        </div>
+    }
+    else if (_room is not null && _room.Status == "waiting" && !_warmupActive)
     {
         <div class="game-overlay">
             <div class="overlay-panel">
@@ -164,7 +216,7 @@
             </div>
         </div>
     }
-    else if (_room.Status != "waiting" && !_room.PeerConnected)
+    else if (_room is not null && _room.Status != "waiting" && !_room.PeerConnected)
     {
         <div class="game-overlay">
             <div class="overlay-panel compact">
@@ -186,7 +238,7 @@
             </div>
         </div>
     }
-    else if (_room.Status == "paused" || _room.Status == "finished")
+    else if (_room is not null && _room.Status is "paused" or "finished")
     {
         <div class="game-overlay">
             <div class="overlay-panel">
@@ -293,12 +345,14 @@
     };
 
     private IMatchClient? _client;
+    private IManualMatchClient? _manual;
     private LocalMatchClient? _warmup;
     private DotNetObjectReference<Play>? _dotNetRef;
     private RoomInfo? _room;
     private string? _error;
     private string? _closedReason;
     private string _latestSnapshot = string.Empty;
+    private string _answerCode = string.Empty;
     private PlaneKind _kind;
     private PlaneKind _requestedKind;
     private RoomSettings _hostSettings = RoomSettings.Default;
@@ -401,8 +455,10 @@
         _client = Mode switch
         {
             null or "bot" => new LocalMatchClient(_kind),
-            _ => new P2pMatchClient(Navigation, Configuration, JS)
+            _ => new P2pMatchClient(Configuration, JS)
         };
+
+        _manual = _client as IManualMatchClient;
 
         _client.RoomUpdated += OnRoomUpdated;
         _client.SnapshotReceived += OnSnapshotReceived;
@@ -422,7 +478,8 @@
         await JS.InvokeVoidAsync("myakBiplane.start", _dotNetRef, CanvasId);
         await SetTelegramModeAsync(true);
         await SetScrollLockedAsync(true);
-        await ConnectAndEnterAsync();
+        var joinCode = await ReadJoinCodeAsync();
+        await ConnectAndEnterAsync(joinCode);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -515,7 +572,7 @@
         _dotNetRef?.Dispose();
     }
 
-    private async Task ConnectAndEnterAsync()
+    private async Task ConnectAndEnterAsync(string? joinCode = null)
     {
         if (_client is null)
         {
@@ -531,7 +588,7 @@
             _room = Mode switch
             {
                 "host" => await _client.CreateRoomAsync(KindName(_kind), _hostSettings),
-                "join" => await _client.JoinRoomAsync(Code ?? string.Empty, KindName(_kind)),
+                "join" => await _client.JoinRoomAsync(joinCode ?? Code ?? string.Empty, KindName(_kind)),
                 _ => await _client.CreateBotRoomAsync(KindName(_kind))
             };
 
@@ -559,7 +616,8 @@
     private async Task RetryConnectAsync()
     {
         await SetScrollLockedAsync(true);
-        await ConnectAndEnterAsync();
+        var joinCode = await ReadJoinCodeAsync();
+        await ConnectAndEnterAsync(joinCode);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -703,6 +761,42 @@
             // Буфер обмена может быть недоступен.
         }
     }
+
+    private async Task<string?> ReadJoinCodeAsync()
+    {
+        try
+        {
+            var code = await JS.InvokeAsync<string?>("sessionStorage.getItem", "myakJoinCode");
+            await JS.InvokeVoidAsync("sessionStorage.removeItem", "myakJoinCode");
+            return code;
+        }
+        catch (JSException)
+        {
+            return null;
+        }
+    }
+
+    private async Task CopyManualCodeAsync()
+    {
+        if (_manual?.OutgoingCode is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("myakBiplane.copyText", _manual.OutgoingCode);
+        }
+        catch (Exception)
+        {
+            // Буфер обмена может быть недоступен — код можно выделить вручную.
+        }
+    }
+
+    private Task AcceptAnswerAsync() =>
+        _manual is null
+            ? Task.CompletedTask
+            : RunAsync(() => _manual.AcceptCodeAsync(_answerCode));
 
     private async Task ExitToMenuAsync()
     {
