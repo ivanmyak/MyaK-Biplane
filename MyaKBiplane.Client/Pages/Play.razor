@@ -14,41 +14,36 @@
     @* Сенсорное управление: видно только на телефоне/в Telegram mobile. *@
     <div class="touch-controls @(_room?.Status == "playing" || _warmupActive ? "touch-controls-active" : string.Empty)"
          aria-hidden="true">
-        <div class="touch-stick touch-stick-move" data-touch-stick="move">
-            <span class="touch-stick-knob"></span>
-            <span class="touch-stick-label">Движение</span>
+        @* Стик движения появляется там, куда игрок положил палец. *@
+        <div class="touch-move-zone" data-touch-zone="move">
+            <div class="touch-stick touch-stick-move" data-touch-stick="move">
+                <span class="touch-stick-knob"></span>
+            </div>
         </div>
-        <div class="touch-stick touch-stick-aim" data-touch-stick="aim">
-            <span class="touch-stick-knob"></span>
-            <span class="touch-stick-label">Прицел</span>
-        </div>
-        <div class="touch-buttons">
-            <button type="button" class="touch-button touch-button-fire" data-touch-action="fire">
-                Огонь
+
+        <div class="touch-cluster">
+            <button type="button" class="touch-button touch-context touch-action-eject"
+                    data-touch-action="context" data-touch-state="eject"
+                    aria-label="Покинуть аппарат">E</button>
+
+            <button type="button" class="touch-button touch-reload touch-reload-loaded"
+                    data-touch-action="reload" aria-label="Перезарядка">R</button>
+
+            <button type="button" class="touch-button touch-fire" data-touch-action="fire"
+                    aria-label="Огонь">
+                <span class="touch-fire-label">Огонь</span>
+                <span class="throw-arrow" aria-hidden="true">
+                    <span class="throw-arrow-head"></span>
+                </span>
             </button>
-            <button type="button" class="touch-button" data-touch-action="ability">
-                @(_kind == PlaneKind.Biplane ? "Ускор." : "Рывок")
+
+            <button type="button" class="touch-button touch-ability" data-touch-action="ability"
+                    aria-label="Способность">
+                <span class="touch-ability-label">@(_kind == PlaneKind.Biplane ? "Ускор." : "Рывок")</span>
             </button>
-            @if (_kind == PlaneKind.Biplane)
-            {
-                <button type="button" class="touch-button"
-                        data-touch-action="reload"
-                        aria-label="Перезарядка">
-                    R
-                </button>
-            }
-            <button type="button" class="touch-button"
-                    data-touch-action="eject"
-                    aria-label="Покинуть аппарат">
-                E
-            </button>
-            <button type="button" class="touch-button" data-touch-action="parachute">
-                Купол
-            </button>
+
             <button type="button" class="touch-button touch-button-pause" data-touch-action="pause"
-                    aria-label="Пауза">
-                II
-            </button>
+                    aria-label="Пауза">II</button>
         </div>
     </div>
 
