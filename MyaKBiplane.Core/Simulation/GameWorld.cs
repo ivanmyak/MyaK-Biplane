@@ -615,7 +615,7 @@ public sealed class GameWorld
 
         if (pilot.State is PilotState.Falling or PilotState.Parachuting)
         {
-            if (input.Parachute && !pilot.WasParachutePressed)
+            if (input.Parachute && !pilot.WasParachutePressed && !pilot.IsParachuteBroken)
             {
                 pilot.State = pilot.State == PilotState.Parachuting
                     ? PilotState.Falling
@@ -774,6 +774,24 @@ public sealed class GameWorld
         }
     }
 
+    /// <summary>
+    /// Уничтожает купол парашюта: лётчик переходит в свободное падение и теряет
+    /// возможность раскрыть парашют до возрождения.
+    /// </summary>
+    /// <param name="pilot">Лётчик под куполом.</param>
+    /// <param name="position">Позиция попадания в купол.</param>
+    private void DestroyParachute(Pilot pilot, Vector2 position)
+    {
+        if (pilot.State != PilotState.Parachuting || pilot.IsParachuteBroken)
+        {
+            return;
+        }
+
+        pilot.IsParachuteBroken = true;
+        pilot.State = PilotState.Falling;
+        _events.Add(new GameEvent(GameEventType.ParachuteDestroyed, position, 0f, pilot.Slot));
+    }
+
     private bool TryReenterPlane(Pilot pilot)
     {
         if (pilot.State is not (PilotState.Falling or PilotState.Parachuting or PilotState.OnGround))
@@ -831,6 +849,7 @@ public sealed class GameWorld
         pilot.RespawnRemaining = 0f;
         pilot.WasEjectPressed = false;
         pilot.WasParachutePressed = false;
+        pilot.IsParachuteBroken = false;
 
         if (announce)
         {
@@ -971,6 +990,7 @@ public sealed class GameWorld
             }
 
             Pilot? hitPilot = null;
+            var canopyHit = false;
 
             foreach (var pilot in _pilots)
             {
@@ -978,6 +998,23 @@ public sealed class GameWorld
                     || pilot.State is not (PilotState.Falling or PilotState.Parachuting or PilotState.OnGround))
                 {
                     continue;
+                }
+
+                // Купол парашюта — отдельная цель: попадание в него не убивает лётчика,
+                // но лишает его парашюта до конца жизни.
+                if (pilot.State == PilotState.Parachuting)
+                {
+                    var canopy = pilot.Position
+                        + new Vector2(0f, -GameBalance.PilotParachuteCanopyOffsetY);
+                    var canopyHitRadius = projectile.Radius + GameBalance.PilotParachuteCanopyRadius;
+
+                    if (Vector2.DistanceSquared(projectile.Position, canopy)
+                        <= canopyHitRadius * canopyHitRadius)
+                    {
+                        hitPilot = pilot;
+                        canopyHit = true;
+                        break;
+                    }
                 }
 
                 var pilotHitRadius = projectile.Radius + GameBalance.PilotRadius;
@@ -995,7 +1032,15 @@ public sealed class GameWorld
                 continue;
             }
 
-            KillPilot(hitPilot, projectile.OwnerSlot, projectile.Position);
+            if (canopyHit)
+            {
+                DestroyParachute(hitPilot, projectile.Position);
+            }
+            else
+            {
+                KillPilot(hitPilot, projectile.OwnerSlot, projectile.Position);
+            }
+
             _projectiles.RemoveAt(i);
         }
     }

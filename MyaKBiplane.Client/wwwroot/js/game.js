@@ -1045,7 +1045,9 @@
 
         if (pilotState === "falling") {
             title = "СВОБОДНОЕ ПАДЕНИЕ";
-            first = "Пробел — раскрыть парашют";
+            first = pilot && pilot.parachuteBroken
+                ? "Парашют уничтожен до респавна"
+                : "Пробел — раскрыть парашют";
             second = "A / D — планирование";
             speedColor = tooFast ? "#f87171" : "#4ade80";
         } else if (pilotState === "parachuting") {
@@ -1130,6 +1132,10 @@
                     break;
                 case "parachuteClosed":
                     spawnParticles(game, event.x, event.y - 26, 8, "#94a3b8", 90, 0.35, 2.5);
+                    break;
+                case "parachuteDestroyed":
+                    spawnParticles(game, event.x, event.y, 16, "#f87171", 170, 0.5, 3);
+                    spawnParticles(game, event.x, event.y, 8, "#e2e8f0", 110, 0.4, 2.5);
                     break;
                 case "pilotKilled":
                     spawnParticles(game, event.x, event.y, 22, "#f87171", 210, 0.6, 3.5);

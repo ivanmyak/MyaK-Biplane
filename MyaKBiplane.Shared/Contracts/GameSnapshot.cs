@@ -169,6 +169,11 @@ public sealed class SnapshotPilot
 
     /// <summary>Направление взгляда: 1 — вправо, -1 — влево.</summary>
     public float Facing { get; init; } = 1f;
+
+    /// <summary>
+    /// Уничтожен ли парашют. Пока флаг поднят, раскрыть купол нельзя до возрождения.
+    /// </summary>
+    public bool ParachuteBroken { get; init; }
 }
 
 /// <summary>

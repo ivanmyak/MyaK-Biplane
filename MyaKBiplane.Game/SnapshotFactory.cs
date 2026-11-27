@@ -70,7 +70,8 @@ public static class SnapshotFactory
                 X = pilot.Position.X,
                 Y = pilot.Position.Y,
                 Vy = pilot.Velocity.Y,
-                Facing = pilot.Facing
+                Facing = pilot.Facing,
+                ParachuteBroken = pilot.IsParachuteBroken
             };
         }
 
@@ -172,6 +173,7 @@ public static class SnapshotFactory
         GameEventType.Crash => "crash",
         GameEventType.ParachuteOpened => "parachuteOpened",
         GameEventType.ParachuteClosed => "parachuteClosed",
+        GameEventType.ParachuteDestroyed => "parachuteDestroyed",
         GameEventType.PilotKilled => "pilotKilled",
         _ => "shot"
     };

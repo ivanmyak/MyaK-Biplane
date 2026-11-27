@@ -109,6 +109,12 @@ public sealed class GameBalance
     /// <summary>Максимальная скорость снижения под куполом.</summary>
     public const float PilotParachuteFallSpeed = 105f;
 
+    /// <summary>Смещение центра купола парашюта над лётчиком.</summary>
+    public const float PilotParachuteCanopyOffsetY = 33f;
+
+    /// <summary>Радиус купола для проверки попадания снаряда.</summary>
+    public const float PilotParachuteCanopyRadius = 18f;
+
     /// <summary>Скорость бега лётчика по земле.</summary>
     public const float PilotGroundSpeed = 110f;
 
