@@ -38,8 +38,9 @@ public interface IMatchClient : IAsyncDisposable
 
     /// <summary>Создаёт сетевую комнату.</summary>
     /// <param name="kind">Класс аппарата хозяина.</param>
+    /// <param name="settings">Правила комнаты.</param>
     /// <returns>Информация о комнате.</returns>
-    Task<RoomInfo> CreateRoomAsync(string kind);
+    Task<RoomInfo> CreateRoomAsync(string kind, RoomSettings settings);
 
     /// <summary>Присоединяется к комнате по коду.</summary>
     /// <param name="code">Код комнаты.</param>

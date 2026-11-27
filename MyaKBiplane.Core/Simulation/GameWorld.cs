@@ -27,15 +27,20 @@ public sealed class GameWorld
     /// </summary>
     /// <param name="balance">Параметры баланса. Если не заданы, используется <see cref="GameBalance.Default"/>.</param>
     /// <param name="seed">Начальное зерно случайных чисел.</param>
-    public GameWorld(GameBalance? balance = null, int seed = 0)
+    /// <param name="rules">Правила матча. Если не заданы, используются <see cref="MatchRules.Default"/>.</param>
+    public GameWorld(GameBalance? balance = null, int seed = 0, MatchRules? rules = null)
     {
         Balance = balance ?? GameBalance.Default;
+        Rules = (rules ?? MatchRules.Default).Normalized();
         Seed = seed;
         Reset(PlaneKind.Biplane, PlaneKind.Pterodactyl, secondIsBot: true);
     }
 
     /// <summary>Параметры баланса матча.</summary>
     public GameBalance Balance { get; }
+
+    /// <summary>Правила матча: лимит уничтожений и доступные механики.</summary>
+    public MatchRules Rules { get; }
 
     /// <summary>Зерно случайных чисел матча.</summary>
     public int Seed { get; }
@@ -219,6 +224,7 @@ public sealed class GameWorld
                 UpdatePlane(plane, input, dt);
 
                 if (input.Eject
+                    && Rules.AllowEjection
                     && !pilot.WasEjectPressed
                     && pilot.State == PilotState.InPlane
                     && plane.IsAlive
@@ -910,7 +916,7 @@ public sealed class GameWorld
 
         _scores[slot]++;
 
-        if (_scores[slot] < GameBalance.ScoreToWin)
+        if (_scores[slot] < Rules.ScoreToWin)
         {
             return;
         }

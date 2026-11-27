@@ -38,8 +38,12 @@ public sealed class RoomManager
     /// </summary>
     /// <param name="connectionId">Подключение хозяина.</param>
     /// <param name="kindName">Класс аппарата хозяина.</param>
+    /// <param name="settings">Правила комнаты.</param>
     /// <returns>Информация о комнате с кодом.</returns>
-    public async Task<RoomInfo> CreateOnlineRoomAsync(string connectionId, string kindName)
+    public async Task<RoomInfo> CreateOnlineRoomAsync(
+        string connectionId,
+        string kindName,
+        RoomSettings? settings = null)
     {
         await LeaveInternalAsync(connectionId, notifyOpponent: false);
 
@@ -49,16 +53,21 @@ public sealed class RoomManager
             code,
             connectionId,
             kind,
+            settings,
             _hub,
             _loggerFactory.CreateLogger<MatchRoom>());
 
         _roomsByCode[code] = room;
         _roomsByConnection[connectionId] = room;
         _logger.LogInformation(
-            "Создана сетевая комната {Code}: подключение {ConnectionId}, класс {Kind}",
+            "Создана сетевая комната {Code}: подключение {ConnectionId}, класс {Kind}, " +
+            "лимит {ScoreToWin}, одинаковые {AllowSameKind}, катапульта {AllowEjection}",
             code,
             connectionId,
-            kind);
+            kind,
+            room.Settings.ScoreToWin,
+            room.Settings.AllowSameKind,
+            room.Settings.AllowEjection);
 
         return room.BuildInfo(0);
     }
@@ -94,7 +103,7 @@ public sealed class RoomManager
             "Игрок {ConnectionId} присоединился к комнате {Code} с классом {Kind}",
             connectionId,
             normalizedCode,
-            kind);
+            room.GuestKind);
 
         // Хост узнаёт о госте и начинает WebRTC-предложение.
         await room.NotifyRoomChangedAsync();

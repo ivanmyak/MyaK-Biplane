@@ -61,8 +61,8 @@
         {
             <h2 class="step-title">Сетевая игра в одной сети</h2>
             <p class="step-hint">
-                Создайте комнату и передайте код сопернику. Второй игрок выбирает
-                свой аппарат — классы могут совпадать.
+                Создайте комнату и передайте код сопернику. Хозяин комнаты может
+                изменить правила боя — второй игрок увидит их перед началом.
             </p>
             <div class="menu-actions">
                 <button class="button button-primary" @onclick="ShowHost">
@@ -79,6 +79,39 @@
             <h2 class="step-title">Комната: выберите свой аппарат</h2>
             @AircraftPicker()
             <p class="step-hint">После создания комнаты покажите сопернику её код.</p>
+
+            <label class="check-row">
+                <input type="checkbox" @bind="_customSettings" />
+                <span>Свои настройки</span>
+            </label>
+
+            @if (_customSettings)
+            {
+                <div class="settings-panel">
+                    <label class="field-label" for="score-to-win">Уничтожений до победы</label>
+                    <input id="score-to-win"
+                           type="number"
+                           class="text-input score-input"
+                           min="@RoomSettings.MinScoreToWin"
+                           max="@RoomSettings.MaxScoreToWin"
+                           @bind="_scoreToWin" />
+
+                    <label class="check-row">
+                        <input type="checkbox" @bind="_allowSameKind" />
+                        <span>Разрешить одинаковые аппараты</span>
+                    </label>
+
+                    <label class="check-row">
+                        <input type="checkbox" @bind="_allowEjection" />
+                        <span>Разрешить катапультирование</span>
+                    </label>
+
+                    <p class="step-hint">
+                        Соперник увидит все изменения правил перед началом боя.
+                    </p>
+                </div>
+            }
+
             <div class="menu-actions">
                 <button class="button button-primary" @onclick="StartHost">
                     Создать комнату
@@ -138,6 +171,10 @@
     private string? _error;
     private string _theme = "dark";
     private string _telegramName = string.Empty;
+    private bool _customSettings;
+    private int _scoreToWin = RoomSettings.DefaultScoreToWin;
+    private bool _allowSameKind = true;
+    private bool _allowEjection = true;
 
     private string Version => Configuration["App:Version"] ?? "0.0.0";
 
@@ -247,7 +284,23 @@
 
     private void StartHost()
     {
-        Navigation.NavigateTo($"{Navigation.BaseUri}play?mode=host&kind={KindName(_kind)}");
+        var settings = _customSettings
+            ? new RoomSettings
+            {
+                ScoreToWin = System.Math.Clamp(
+                    _scoreToWin,
+                    RoomSettings.MinScoreToWin,
+                    RoomSettings.MaxScoreToWin),
+                AllowSameKind = _allowSameKind,
+                AllowEjection = _allowEjection
+            }
+            : RoomSettings.Default;
+
+        Navigation.NavigateTo(
+            $"{Navigation.BaseUri}play?mode=host&kind={KindName(_kind)}" +
+            $"&limit={settings.ScoreToWin}" +
+            $"&sameKind={(settings.AllowSameKind ? "true" : "false")}" +
+            $"&eject={(settings.AllowEjection ? "true" : "false")}");
     }
 
     private void StartJoin()

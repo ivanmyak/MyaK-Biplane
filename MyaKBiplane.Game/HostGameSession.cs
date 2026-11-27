@@ -41,11 +41,17 @@ public sealed class HostGameSession
     /// <param name="hostKind">Класс аппарата хозяина.</param>
     /// <param name="guestKind">Класс аппарата гостя.</param>
     /// <param name="seed">Зерно случайных чисел.</param>
-    public HostGameSession(PlaneKind hostKind, PlaneKind guestKind, int seed = 0)
+    /// <param name="settings">Настройки комнаты. Если не заданы, используются стандартные.</param>
+    public HostGameSession(
+        PlaneKind hostKind,
+        PlaneKind guestKind,
+        int seed = 0,
+        RoomSettings? settings = null)
     {
         _hostKind = hostKind;
         _guestKind = guestKind;
-        _world = new GameWorld(seed: seed);
+        Settings = (settings ?? RoomSettings.Default).Normalized();
+        _world = new GameWorld(seed: seed, rules: Settings.ToMatchRules());
     }
 
     /// <summary>Статус матча: <c>waiting</c>, <c>playing</c>, <c>paused</c> или <c>finished</c>.</summary>
@@ -71,6 +77,9 @@ public sealed class HostGameSession
 
     /// <summary>Класс аппарата гостя.</summary>
     public PlaneKind GuestKind => _guestKind;
+
+    /// <summary>Правила комнаты.</summary>
+    public RoomSettings Settings { get; }
 
     /// <summary>Начинает матч с реальными классами обоих игроков.</summary>
     public void Start()
@@ -267,6 +276,7 @@ public sealed class HostGameSession
         IsHost = slot == 0,
         HostKind = SnapshotFactory.ToKindName(_hostKind),
         GuestKind = SnapshotFactory.ToKindName(_guestKind),
+        Settings = Settings,
         OpponentConnected = true,
         PeerConnected = true,
         PausedBySlot = PausedBySlot,

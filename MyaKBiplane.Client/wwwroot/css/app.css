@@ -713,6 +713,106 @@ html.telegram-webapp .game-shell {
     user-select: all;
 }
 
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+    color: var(--text);
+    font-size: 0.95rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.check-row input[type="checkbox"] {
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: var(--cyan);
+    cursor: pointer;
+}
+
+.settings-panel {
+    margin-top: 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--surface-border);
+    border-radius: 1rem;
+    background: var(--surface);
+    text-align: left;
+}
+
+.settings-panel .text-input {
+    max-width: 9rem;
+}
+
+.settings-panel .check-row {
+    margin-top: 0.85rem;
+}
+
+.score-input {
+    letter-spacing: normal;
+}
+
+.rules-panel {
+    margin: 1.1rem auto 0;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--cyan-soft-border);
+    border-radius: 0.8rem;
+    background: var(--cyan-soft);
+    text-align: left;
+}
+
+.rules-title {
+    margin: 0;
+    color: var(--accent-text);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.rules-list {
+    margin: 0.5rem 0 0;
+    padding-left: 1.1rem;
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.warmup-banner {
+    position: absolute;
+    top: calc(1rem + var(--tg-safe-top, 0px));
+    left: 50%;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0.85rem;
+    border: 1px solid var(--floating-border);
+    border-radius: 0.7rem;
+    background: var(--floating-bg);
+    transform: translateX(-50%);
+    backdrop-filter: blur(8px);
+}
+
+.warmup-text {
+    display: flex;
+    flex-direction: column;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
+.warmup-text strong {
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.button-small {
+    padding: 0.45rem 0.7rem;
+    font-size: 0.8rem;
+}
+
 .score-line {
     display: flex;
     align-items: baseline;
