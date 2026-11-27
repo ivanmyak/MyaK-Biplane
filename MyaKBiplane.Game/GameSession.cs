@@ -34,16 +34,21 @@ public sealed class GameSession
     /// </summary>
     /// <param name="playerKind">Класс аппарата игрока.</param>
     /// <param name="seed">Зерно случайных чисел.</param>
-    public GameSession(PlaneKind playerKind, int seed = 0)
+    /// <param name="settings">Настройки комнаты. Если не заданы, используются стандартные.</param>
+    public GameSession(PlaneKind playerKind, int seed = 0, RoomSettings? settings = null)
     {
         PlayerKind = playerKind;
-        _world = new GameWorld(seed: seed);
+        Settings = (settings ?? RoomSettings.Default).Normalized();
+        _world = new GameWorld(seed: seed, rules: Settings.ToMatchRules());
         _bot = new BotController(seed + 1, _world.Balance);
         Reset(playerKind);
     }
 
     /// <summary>Класс аппарата игрока.</summary>
     public PlaneKind PlayerKind { get; private set; }
+
+    /// <summary>Правила комнаты.</summary>
+    public RoomSettings Settings { get; }
 
     /// <summary>Текущее состояние мира.</summary>
     public GameWorld World => _world;

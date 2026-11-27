@@ -45,6 +45,7 @@ public sealed class P2pMatchClient : IMatchClient
     private bool _isHost;
     private PlaneKind _hostKind = PlaneKind.Biplane;
     private PlaneKind _guestKind = PlaneKind.Pterodactyl;
+    private RoomSettings _settings = RoomSettings.Default;
     private RoomInfo _roomInfo = new();
     private string _status = "waiting";
     private int _pausedBySlot = -1;
@@ -107,14 +108,15 @@ public sealed class P2pMatchClient : IMatchClient
             : ConnectWithRetriesAsync();
 
     /// <inheritdoc />
-    public async Task<RoomInfo> CreateRoomAsync(string kind)
+    public async Task<RoomInfo> CreateRoomAsync(string kind, RoomSettings settings)
     {
         _isHost = true;
         _yourSlot = 0;
         _hostKind = ParseKind(kind);
         _guestKind = GameWorld.Opposite(_hostKind);
+        _settings = settings.Normalized();
 
-        var info = await InvokeHubAsync<RoomInfo>("CreateRoom", kind);
+        var info = await InvokeHubAsync<RoomInfo>("CreateRoom", kind, _settings);
         ApplyServerInfo(info);
         return _roomInfo;
     }
@@ -291,7 +293,8 @@ public sealed class P2pMatchClient : IMatchClient
             _session = new HostGameSession(
                 _hostKind,
                 _guestKind,
-                seed: HashCode.Combine(_code, Environment.TickCount));
+                seed: HashCode.Combine(_code, Environment.TickCount),
+                settings: _settings);
             _session.Start();
 
             _status = _session.Status;
@@ -560,6 +563,7 @@ public sealed class P2pMatchClient : IMatchClient
         _isHost = info.IsHost;
 
         _hostKind = ParseKind(info.HostKind);
+        _settings = info.Settings.Normalized();
 
         if (!string.IsNullOrWhiteSpace(info.GuestKind))
         {

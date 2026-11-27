@@ -15,6 +15,7 @@ public sealed class MatchRoom : IAsyncDisposable
     private readonly object _sync = new();
     private readonly IHubContext<GameHub> _hub;
     private readonly ILogger<MatchRoom> _logger;
+    private readonly RoomSettings _settings;
 
     private string _status = "waiting";
     private bool _closed;
@@ -25,12 +26,14 @@ public sealed class MatchRoom : IAsyncDisposable
     /// <param name="code">Код комнаты.</param>
     /// <param name="hostConnectionId">Подключение хозяина.</param>
     /// <param name="hostKind">Класс аппарата хозяина.</param>
+    /// <param name="settings">Правила комнаты.</param>
     /// <param name="hub">Контекст SignalR.</param>
     /// <param name="logger">Логгер комнаты.</param>
     public MatchRoom(
         string code,
         string hostConnectionId,
         PlaneKind hostKind,
+        RoomSettings? settings,
         IHubContext<GameHub> hub,
         ILogger<MatchRoom> logger)
     {
@@ -38,6 +41,7 @@ public sealed class MatchRoom : IAsyncDisposable
         HostConnectionId = hostConnectionId;
         HostKind = hostKind;
         GuestKind = GameWorld.Opposite(hostKind);
+        _settings = (settings ?? RoomSettings.Default).Normalized();
         _hub = hub;
         _logger = logger;
     }
@@ -56,6 +60,9 @@ public sealed class MatchRoom : IAsyncDisposable
 
     /// <summary>Класс аппарата гостя.</summary>
     public PlaneKind GuestKind { get; private set; }
+
+    /// <summary>Правила комнаты.</summary>
+    public RoomSettings Settings => _settings;
 
     /// <summary>Статус комнаты на стороне сервера.</summary>
     public string Status
@@ -96,8 +103,11 @@ public sealed class MatchRoom : IAsyncDisposable
                 return null;
             }
 
+            // Если хозяин запретил одинаковые аппараты, гостю достаётся
+            // противоположный класс: так комната остаётся доступной,
+            // а гость увидит пояснение в интерфейсе.
+            GuestKind = _settings.ResolveGuestKind(HostKind, guestKind);
             GuestConnectionId = connectionId;
-            GuestKind = guestKind;
             _status = "playing";
             return BuildInfoLocked(1);
         }
@@ -197,6 +207,7 @@ public sealed class MatchRoom : IAsyncDisposable
         GuestKind = GuestConnectionId is not null
             ? SnapshotFactory.ToKindName(GuestKind)
             : null,
+        Settings = _settings,
         OpponentConnected = GuestConnectionId is not null
     };
 

@@ -26,6 +26,9 @@ public sealed record RoomInfo
     /// <summary>Класс аппарата гостя, если он уже присоединился.</summary>
     public string? GuestKind { get; init; }
 
+    /// <summary>Правила комнаты, выбранные хозяином.</summary>
+    public RoomSettings Settings { get; init; } = new();
+
     /// <summary>Подключён ли второй игрок.</summary>
     public bool OpponentConnected { get; init; }
 

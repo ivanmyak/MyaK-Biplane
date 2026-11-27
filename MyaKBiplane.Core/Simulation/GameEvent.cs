@@ -53,6 +53,9 @@ public enum GameEventType
     /// <summary>Лётчик сложил парашют.</summary>
     ParachuteClosed,
 
+    /// <summary>Купол парашюта уничтожен снарядом.</summary>
+    ParachuteDestroyed,
+
     /// <summary>Лётчик погиб: разбился при падении или был сбит.</summary>
     PilotKilled
 }

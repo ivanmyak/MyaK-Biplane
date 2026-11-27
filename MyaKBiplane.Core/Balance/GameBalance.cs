@@ -71,7 +71,7 @@ public sealed class GameBalance
     public const float RespawnDelay = 2.5f;
 
     /// <summary>Количество уничтожений, необходимое для победы в матче.</summary>
-    public const int ScoreToWin = 5;
+    public const int ScoreToWin = 10;
 
     /// <summary>Радиус лётчика: 1.7 радиуса пули биплана.</summary>
     public const float PilotRadius = 7.65f;
@@ -108,6 +108,12 @@ public sealed class GameBalance
 
     /// <summary>Максимальная скорость снижения под куполом.</summary>
     public const float PilotParachuteFallSpeed = 105f;
+
+    /// <summary>Смещение центра купола парашюта над лётчиком.</summary>
+    public const float PilotParachuteCanopyOffsetY = 33f;
+
+    /// <summary>Радиус купола для проверки попадания снаряда.</summary>
+    public const float PilotParachuteCanopyRadius = 18f;
 
     /// <summary>Скорость бега лётчика по земле.</summary>
     public const float PilotGroundSpeed = 110f;

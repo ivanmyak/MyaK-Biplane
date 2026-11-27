@@ -713,6 +713,106 @@ html.telegram-webapp .game-shell {
     user-select: all;
 }
 
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+    color: var(--text);
+    font-size: 0.95rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.check-row input[type="checkbox"] {
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: var(--cyan);
+    cursor: pointer;
+}
+
+.settings-panel {
+    margin-top: 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--surface-border);
+    border-radius: 1rem;
+    background: var(--surface);
+    text-align: left;
+}
+
+.settings-panel .text-input {
+    max-width: 9rem;
+}
+
+.settings-panel .check-row {
+    margin-top: 0.85rem;
+}
+
+.score-input {
+    letter-spacing: normal;
+}
+
+.rules-panel {
+    margin: 1.1rem auto 0;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--cyan-soft-border);
+    border-radius: 0.8rem;
+    background: var(--cyan-soft);
+    text-align: left;
+}
+
+.rules-title {
+    margin: 0;
+    color: var(--accent-text);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.rules-list {
+    margin: 0.5rem 0 0;
+    padding-left: 1.1rem;
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.warmup-banner {
+    position: absolute;
+    top: calc(1rem + var(--tg-safe-top, 0px));
+    left: 50%;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0.85rem;
+    border: 1px solid var(--floating-border);
+    border-radius: 0.7rem;
+    background: var(--floating-bg);
+    transform: translateX(-50%);
+    backdrop-filter: blur(8px);
+}
+
+.warmup-text {
+    display: flex;
+    flex-direction: column;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
+.warmup-text strong {
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.button-small {
+    padding: 0.45rem 0.7rem;
+    font-size: 0.8rem;
+}
+
 .score-line {
     display: flex;
     align-items: baseline;
@@ -799,6 +899,8 @@ html.telegram-webapp .menu-shell {
 }
 
 .touch-controls {
+    --touch-size: clamp(2.25rem, 14.3vmin, 4rem);
+    --touch-stick-size: clamp(4.5rem, 22vmin, 7rem);
     position: absolute;
     inset: 0;
     z-index: 2;
@@ -814,35 +916,42 @@ html.telegram-webapp .menu-shell {
     display: block;
 }
 
-.touch-stick {
+.touch-move-zone {
     position: absolute;
-    bottom: calc(1rem + var(--tg-safe-bottom, 0px));
-    width: 7.5rem;
-    height: 7.5rem;
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(2, 6, 23, 0.28), rgba(2, 6, 23, 0.55));
-    box-shadow: inset 0 0 1.5rem rgba(0, 0, 0, 0.25);
+    left: 0;
+    bottom: 0;
+    width: 46%;
+    height: 72%;
     pointer-events: auto;
     touch-action: none;
+}
+
+.touch-stick {
+    position: absolute;
+    width: var(--touch-stick-size);
+    height: var(--touch-stick-size);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(2, 6, 23, 0.32), rgba(2, 6, 23, 0.6));
+    box-shadow: inset 0 0 1.2rem rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    transition: opacity 120ms ease;
     backdrop-filter: blur(4px);
 }
 
-.touch-stick-move {
-    left: calc(1rem + var(--tg-safe-left, 0px));
-}
-
-.touch-stick-aim {
-    right: calc(1rem + var(--tg-safe-right, 0px));
+.touch-stick-move.is-active {
+    opacity: 1;
 }
 
 .touch-stick-knob {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 3rem;
-    height: 3rem;
-    margin: -1.5rem 0 0 -1.5rem;
+    width: calc(var(--touch-stick-size) * 0.42);
+    height: calc(var(--touch-stick-size) * 0.42);
+    margin: calc(var(--touch-stick-size) * -0.21) 0 0 calc(var(--touch-stick-size) * -0.21);
     border: 1px solid rgba(255, 255, 255, 0.7);
     border-radius: 50%;
     background: rgba(56, 189, 248, 0.55);
@@ -850,65 +959,172 @@ html.telegram-webapp .menu-shell {
     will-change: transform;
 }
 
-.touch-stick-aim .touch-stick-knob {
-    background: rgba(248, 113, 113, 0.55);
-    box-shadow: 0 0 0.8rem rgba(248, 113, 113, 0.5);
-}
-
-.touch-stick-label {
+.touch-cluster {
     position: absolute;
-    left: 50%;
-    bottom: -1.25rem;
-    color: rgba(255, 255, 255, 0.82);
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
-    transform: translateX(-50%);
-}
-
-.touch-buttons {
-    position: absolute;
-    right: calc(1rem + var(--tg-safe-right, 0px));
-    bottom: calc(9.5rem + var(--tg-safe-bottom, 0px));
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.4rem;
-    width: 10.5rem;
+    top: calc(3.4rem + var(--tg-safe-top, 0px));
+    right: calc(0.75rem + var(--tg-safe-right, 0px));
+    width: calc(var(--touch-size) * 2.8);
+    height: calc(var(--touch-size) * 5);
     pointer-events: none;
 }
 
 .touch-button {
-    min-height: 2.75rem;
-    padding: 0.35rem 0.4rem;
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: var(--touch-size);
+    height: var(--touch-size);
+    padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 0.7rem;
-    background: rgba(2, 6, 23, 0.55);
+    border-radius: 50%;
+    background: rgba(2, 6, 23, 0.62);
     color: #e2e8f0;
     font: inherit;
-    font-size: 0.72rem;
+    font-size: clamp(0.52rem, 1.8vh, 0.7rem);
     font-weight: 700;
-    line-height: 1.1;
+    line-height: 1;
     pointer-events: auto;
     touch-action: none;
     backdrop-filter: blur(4px);
-}
-
-.touch-button-fire {
-    grid-column: span 2;
-    background: rgba(248, 113, 113, 0.75);
-    color: #ffffff;
-}
-
-.touch-button-pause {
-    grid-column: span 3;
+    transition: background 120ms ease, box-shadow 120ms ease, opacity 120ms ease, transform 120ms ease;
 }
 
 .touch-button:active {
-    background: rgba(56, 189, 248, 0.5);
-    transform: scale(0.96);
+    transform: scale(0.94);
+}
+
+/* Единая кнопка: только цвет меняет действие. */
+.touch-context {
+    top: 0;
+    right: 0;
+    background: rgba(74, 222, 128, 0.85);
+    color: #052e16;
+    box-shadow: 0 0 0.7rem rgba(74, 222, 128, 0.35);
+}
+
+.touch-context.touch-action-open {
+    background: rgba(56, 189, 248, 0.88);
+    color: #082f49;
+    box-shadow: 0 0 0.7rem rgba(56, 189, 248, 0.4);
+}
+
+.touch-context.touch-action-close {
+    background: rgba(148, 163, 184, 0.82);
+    color: #0f172a;
+    box-shadow: none;
+}
+
+.touch-context.touch-action-reenter {
+    background: rgba(74, 222, 128, 0.85);
+    color: #052e16;
+    box-shadow: 0 0 0.7rem rgba(74, 222, 128, 0.35);
+}
+
+.touch-context.touch-action-disabled {
+    background: rgba(100, 116, 139, 0.45);
+    color: rgba(226, 232, 240, 0.6);
+    box-shadow: none;
+    pointer-events: none;
+}
+
+.touch-reload {
+    top: calc(var(--touch-size) * 0.7);
+    right: calc(var(--touch-size) * 1.15);
+    width: calc(var(--touch-size) * 0.78);
+    height: calc(var(--touch-size) * 0.78);
+    background: rgba(248, 113, 113, 0.88);
+    color: #ffffff;
+}
+
+.touch-reload.touch-reload-empty {
+    background: rgba(250, 204, 21, 0.92);
+    color: #422006;
+}
+
+.touch-fire {
+    top: calc(var(--touch-size) * 1.75);
+    right: calc(var(--touch-size) * 1.15);
+    width: calc(var(--touch-size) * 1.25);
+    height: calc(var(--touch-size) * 1.25);
+    background: rgba(248, 113, 113, 0.78);
+    color: #ffffff;
+}
+
+.touch-fire-label {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.touch-controls[data-kind="pterodactyl"] .touch-reload,
+.touch-controls[data-kind="pterodactyl"] .touch-fire-label {
+    display: none;
+}
+
+/* Стрелка броска птеродактиля: направление и сила удержания. */
+.throw-arrow {
+    position: absolute;
+    top: calc(50% - 1px);
+    left: 50%;
+    display: none;
+    width: calc(var(--touch-size) * (1.2 + var(--throw-power, 0) * 0.9));
+    height: 2px;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.25), rgba(250, 204, 21, 0.98));
+    opacity: calc(0.5 + var(--throw-power, 0) * 0.5);
+    pointer-events: none;
+    transform-origin: 0 50%;
+    transform: rotate(var(--throw-angle, 0deg));
+    transition: width 60ms linear, opacity 60ms linear;
+}
+
+.touch-controls[data-kind="pterodactyl"] .throw-arrow {
+    display: block;
+}
+
+.throw-arrow-head {
+    position: absolute;
+    top: 50%;
+    right: -1px;
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 8px solid rgba(250, 204, 21, 0.98);
+    transform: translateY(-50%);
+}
+
+.touch-ability {
+    top: calc(var(--touch-size) * 3.2);
+    right: calc(var(--touch-size) * 0.55);
+    background: rgba(56, 189, 248, 0.72);
+    color: #082f49;
+}
+
+.touch-ability::after {
+    position: absolute;
+    inset: 8%;
+    border-radius: 50%;
+    background: conic-gradient(rgba(2, 6, 23, 0.68) var(--cooldown-deg, 0deg), transparent 0deg);
+    content: "";
+    pointer-events: none;
+}
+
+.touch-ability-label {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.touch-button-pause {
+    top: calc(var(--touch-size) * 4.2);
+    right: 0;
+    width: calc(var(--touch-size) * 0.7);
+    height: calc(var(--touch-size) * 0.7);
+    border-radius: 50%;
+    background: rgba(2, 6, 23, 0.55);
+    font-size: clamp(0.45rem, 1.5vh, 0.6rem);
 }
 
 @media (max-width: 720px) {
@@ -957,25 +1173,8 @@ html.telegram-webapp .menu-shell {
 }
 
 @media (max-height: 480px) and (pointer: coarse) {
-    .touch-stick {
-        width: 6rem;
-        height: 6rem;
-    }
-
-    .touch-stick-knob {
-        width: 2.4rem;
-        height: 2.4rem;
-        margin: -1.2rem 0 0 -1.2rem;
-    }
-
-    .touch-buttons {
-        bottom: calc(7.5rem + var(--tg-safe-bottom, 0px));
-        width: 9rem;
-    }
-
     .touch-button {
-        min-height: 2.25rem;
-        font-size: 0.65rem;
+        font-size: 0.62rem;
     }
 }
 
@@ -1284,42 +1483,17 @@ html.needs-landscape .telegram-rotate-overlay {
         font-size: 0.62rem;
     }
 
-    .touch-stick {
-        bottom: calc(0.5rem + var(--tg-safe-bottom, 0px));
-        width: 5rem;
-        height: 5rem;
+    .touch-controls {
+        --touch-size: clamp(2rem, 14.3vmin, 3.2rem);
+        --touch-stick-size: clamp(3.8rem, 20vmin, 5.5rem);
     }
 
-    .touch-stick-move {
-        left: calc(0.5rem + var(--tg-safe-left, 0px));
-    }
-
-    .touch-stick-aim {
-        right: calc(0.5rem + var(--tg-safe-right, 0px));
-    }
-
-    .touch-stick-knob {
-        width: 2rem;
-        height: 2rem;
-        margin: -1rem 0 0 -1rem;
-    }
-
-    .touch-stick-label {
-        bottom: -0.85rem;
-        font-size: 0.5rem;
-    }
-
-    .touch-buttons {
-        right: calc(0.5rem + var(--tg-safe-right, 0px));
-        bottom: calc(5.8rem + var(--tg-safe-bottom, 0px));
-        width: 7.6rem;
-        gap: 0.25rem;
+    .touch-cluster {
+        top: calc(2.6rem + var(--tg-safe-top, 0px));
+        right: calc(0.45rem + var(--tg-safe-right, 0px));
     }
 
     .touch-button {
-        min-height: 1.9rem;
-        padding: 0.2rem 0.25rem;
-        border-radius: 0.45rem;
-        font-size: 0.6rem;
+        font-size: 0.58rem;
     }
 }

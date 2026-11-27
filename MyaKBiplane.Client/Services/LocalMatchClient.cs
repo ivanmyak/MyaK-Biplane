@@ -16,6 +16,7 @@ public sealed class LocalMatchClient : IMatchClient
     private const double SnapshotIntervalMs = 33d;
 
     private readonly PlaneKind _playerKind;
+    private readonly RoomSettings _settings;
     private GameSession? _session;
     private RoomInfo _room = new();
     private string _snapshotJson = string.Empty;
@@ -26,7 +27,12 @@ public sealed class LocalMatchClient : IMatchClient
     /// Создаёт локальный матч.
     /// </summary>
     /// <param name="playerKind">Класс аппарата игрока.</param>
-    public LocalMatchClient(PlaneKind playerKind) => _playerKind = playerKind;
+    /// <param name="settings">Правила комнаты. Если не заданы, используются стандартные.</param>
+    public LocalMatchClient(PlaneKind playerKind, RoomSettings? settings = null)
+    {
+        _playerKind = playerKind;
+        _settings = (settings ?? RoomSettings.Default).Normalized();
+    }
 
     /// <inheritdoc />
     public event Action<RoomInfo>? RoomUpdated;
@@ -51,7 +57,7 @@ public sealed class LocalMatchClient : IMatchClient
     /// <inheritdoc />
     public Task<RoomInfo> CreateBotRoomAsync(string kind)
     {
-        _session = new GameSession(ParseKind(kind), seed: Environment.TickCount);
+        _session = new GameSession(ParseKind(kind), seed: Environment.TickCount, _settings);
         _snapshotJson = _session.CreateSnapshotJson();
         _room = BuildRoom("playing");
         _lastTimestamp = double.NaN;
@@ -62,7 +68,7 @@ public sealed class LocalMatchClient : IMatchClient
     }
 
     /// <inheritdoc />
-    public Task<RoomInfo> CreateRoomAsync(string kind) =>
+    public Task<RoomInfo> CreateRoomAsync(string kind, RoomSettings settings) =>
         throw new NotSupportedException("Локальный матч не создаёт сетевых комнат.");
 
     /// <inheritdoc />
@@ -171,6 +177,7 @@ public sealed class LocalMatchClient : IMatchClient
             IsHost = true,
             HostKind = SnapshotFactory.ToKindName(playerKind),
             GuestKind = SnapshotFactory.ToKindName(GameWorld.Opposite(playerKind)),
+            Settings = _settings,
             OpponentConnected = true,
             PausedBySlot = status == "paused" ? 0 : -1
         };

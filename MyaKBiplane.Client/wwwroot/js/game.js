@@ -172,7 +172,7 @@
             moveY: clamp((down - up) + touch.moveY, -1, 1),
             aimX: aim.x,
             aimY: aim.y,
-            fire: game.mouse.down || keys.has("KeyF") || touch.fire || touch.aimFire,
+            fire: game.mouse.down || keys.has("KeyF") || touch.fire,
             ability: keys.has("Space") || game.abilityPressed,
             reload: game.reloadPressed,
             eject: game.ejectPressed,
@@ -219,6 +219,7 @@
 
                 if (state && state.worldWidth) {
                     game.state = state;
+                    updateTouchUi(game, state);
                     updateView(game, state);
                     handleEvents(game, state);
                     draw(game, state);
@@ -1045,7 +1046,9 @@
 
         if (pilotState === "falling") {
             title = "СВОБОДНОЕ ПАДЕНИЕ";
-            first = "Пробел — раскрыть парашют";
+            first = pilot && pilot.parachuteBroken
+                ? "Парашют уничтожен до респавна"
+                : "Пробел — раскрыть парашют";
             second = "A / D — планирование";
             speedColor = tooFast ? "#f87171" : "#4ade80";
         } else if (pilotState === "parachuting") {
@@ -1131,6 +1134,10 @@
                 case "parachuteClosed":
                     spawnParticles(game, event.x, event.y - 26, 8, "#94a3b8", 90, 0.35, 2.5);
                     break;
+                case "parachuteDestroyed":
+                    spawnParticles(game, event.x, event.y, 16, "#f87171", 170, 0.5, 3);
+                    spawnParticles(game, event.x, event.y, 8, "#e2e8f0", 110, 0.4, 2.5);
+                    break;
                 case "pilotKilled":
                     spawnParticles(game, event.x, event.y, 22, "#f87171", 210, 0.6, 3.5);
                     spawnParticles(game, event.x, event.y, 8, "#fecaca", 120, 0.45, 2.5);
@@ -1189,13 +1196,24 @@
         game.touch.aimX = 0;
         game.touch.aimY = 0;
         game.touch.aimActive = false;
-        game.touch.aimFire = false;
         game.touch.fire = false;
         game.abilityPressed = false;
 
+        game.touchUi?.stick?.classList.remove("is-active");
         document.querySelectorAll(".touch-stick-knob").forEach((knob) => {
             knob.style.transform = "";
         });
+    }
+
+    function isPterodactyl(game) {
+        const state = game.state;
+        if (!state) {
+            return false;
+        }
+
+        const plane = (state.planes || []).find((item) => item.slot === state.yourSlot);
+        const pilot = (state.pilots || []).find((item) => item.slot === state.yourSlot);
+        return (plane?.kind || pilot?.kind) === "pterodactyl";
     }
 
     function attachTouchControls(game) {
@@ -1206,30 +1224,33 @@
         }
 
         const cleanups = [];
+        const zone = container.querySelector("[data-touch-zone='move']");
+        const stick = zone?.querySelector("[data-touch-stick='move']");
+        const knob = stick?.querySelector(".touch-stick-knob");
+        const contextButton = container.querySelector("[data-touch-action='context']");
+        const reloadButton = container.querySelector("[data-touch-action='reload']");
+        const fireButton = container.querySelector("[data-touch-action='fire']");
+        const abilityButton = container.querySelector("[data-touch-action='ability']");
 
-        container.querySelectorAll("[data-touch-stick]").forEach((element) => {
-            const kind = element.dataset.touchStick;
-            const knob = element.querySelector(".touch-stick-knob");
+        game.touchUi = {
+            container,
+            stick,
+            context: contextButton,
+            reload: reloadButton,
+            ability: abilityButton,
+            arrow: fireButton?.querySelector(".throw-arrow") || null,
+            abilityLabel: abilityButton?.querySelector(".touch-ability-label") || null
+        };
+
+        if (zone && stick) {
             let pointerId = null;
-
-            const applyStick = (x, y, active) => {
-                if (kind === "aim") {
-                    game.touch.aimX = x;
-                    game.touch.aimY = y;
-                    game.touch.aimActive = active;
-                    game.touch.aimFire = active;
-                    return;
-                }
-
-                game.touch.moveX = x;
-                game.touch.moveY = y;
-            };
+            let centerX = 0;
+            let centerY = 0;
+            let radius = 1;
 
             const update = (event) => {
-                const rect = element.getBoundingClientRect();
-                const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.36);
-                let dx = event.clientX - (rect.left + rect.width / 2);
-                let dy = event.clientY - (rect.top + rect.height / 2);
+                let dx = event.clientX - centerX;
+                let dy = event.clientY - centerY;
                 const length = Math.hypot(dx, dy);
 
                 if (length > radius) {
@@ -1244,17 +1265,20 @@
                 const x = dx / radius;
                 const y = dy / radius;
                 const active = Math.hypot(x, y) > 0.12;
-                applyStick(active ? x : 0, active ? y : 0, active);
+                game.touch.moveX = active ? x : 0;
+                game.touch.moveY = active ? y : 0;
             };
 
             const reset = () => {
                 pointerId = null;
+                stick.classList.remove("is-active");
 
                 if (knob) {
                     knob.style.transform = "";
                 }
 
-                applyStick(0, 0, false);
+                game.touch.moveX = 0;
+                game.touch.moveY = 0;
             };
 
             const onDown = (event) => {
@@ -1263,7 +1287,15 @@
                 }
 
                 pointerId = event.pointerId;
-                element.setPointerCapture?.(event.pointerId);
+                centerX = event.clientX;
+                centerY = event.clientY;
+
+                const zoneRect = zone.getBoundingClientRect();
+                stick.style.left = `${centerX - zoneRect.left}px`;
+                stick.style.top = `${centerY - zoneRect.top}px`;
+                radius = Math.max(1, stick.getBoundingClientRect().width * 0.36);
+                stick.classList.add("is-active");
+                zone.setPointerCapture?.(event.pointerId);
                 update(event);
                 event.preventDefault();
             };
@@ -1289,20 +1321,42 @@
                 }
             };
 
-            element.addEventListener("pointerdown", onDown);
-            element.addEventListener("pointermove", onMove);
-            element.addEventListener("pointerup", onUp);
-            element.addEventListener("pointercancel", onCancel);
-            element.addEventListener("lostpointercapture", onCancel);
+            zone.addEventListener("pointerdown", onDown);
+            zone.addEventListener("pointermove", onMove);
+            zone.addEventListener("pointerup", onUp);
+            zone.addEventListener("pointercancel", onCancel);
+            zone.addEventListener("lostpointercapture", onCancel);
 
             cleanups.push(() => {
-                element.removeEventListener("pointerdown", onDown);
-                element.removeEventListener("pointermove", onMove);
-                element.removeEventListener("pointerup", onUp);
-                element.removeEventListener("pointercancel", onCancel);
-                element.removeEventListener("lostpointercapture", onCancel);
+                zone.removeEventListener("pointerdown", onDown);
+                zone.removeEventListener("pointermove", onMove);
+                zone.removeEventListener("pointerup", onUp);
+                zone.removeEventListener("pointercancel", onCancel);
+                zone.removeEventListener("lostpointercapture", onCancel);
             });
-        });
+        }
+
+        const updateThrowAim = (event, button) => {
+            const rect = button.getBoundingClientRect();
+            const dx = event.clientX - (rect.left + rect.width / 2);
+            const dy = event.clientY - (rect.top + rect.height / 2);
+
+            if (Math.hypot(dx, dy) < 6) {
+                return;
+            }
+
+            const state = game.state;
+            const plane = state && (state.planes || []).find(
+                (item) => item.slot === state.yourSlot);
+
+            if (!plane) {
+                return;
+            }
+
+            game.touch.aimX = plane.x + dx * 10;
+            game.touch.aimY = plane.y + dy * 10;
+            game.touch.aimActive = true;
+        };
 
         container.querySelectorAll("[data-touch-action]").forEach((button) => {
             const action = button.dataset.touchAction;
@@ -1321,6 +1375,11 @@
                 switch (action) {
                     case "fire":
                         game.touch.fire = true;
+
+                        if (isPterodactyl(game)) {
+                            updateThrowAim(event, button);
+                        }
+
                         break;
                     case "ability":
                         game.abilityPressed = true;
@@ -1328,12 +1387,17 @@
                     case "reload":
                         game.reloadPressed = true;
                         break;
-                    case "eject":
-                        game.ejectPressed = true;
+                    case "context": {
+                        const mode = button.dataset.touchState;
+
+                        if (mode === "eject" || mode === "reenter") {
+                            game.ejectPressed = true;
+                        } else if (mode === "open" || mode === "close") {
+                            game.parachutePressed = true;
+                        }
+
                         break;
-                    case "parachute":
-                        game.parachutePressed = true;
-                        break;
+                    }
                     case "pause":
                         game.dotNetRef.invokeMethodAsync("TogglePause");
                         break;
@@ -1342,19 +1406,18 @@
                 }
             };
 
-            const onUp = (event) => {
+            const onMove = (event) => {
                 if (event.pointerId !== pointerId) {
                     return;
                 }
 
-                pointerId = null;
-
-                if (action === "fire") {
-                    game.touch.fire = false;
+                if (action === "fire" && isPterodactyl(game)) {
+                    updateThrowAim(event, button);
+                    event.preventDefault();
                 }
             };
 
-            const onCancel = (event) => {
+            const release = (event) => {
                 if (event.pointerId !== pointerId) {
                     return;
                 }
@@ -1363,26 +1426,134 @@
 
                 if (action === "fire") {
                     game.touch.fire = false;
+                    game.touch.aimActive = false;
                 }
             };
 
             button.addEventListener("pointerdown", onDown);
-            button.addEventListener("pointerup", onUp);
-            button.addEventListener("pointercancel", onCancel);
-            button.addEventListener("lostpointercapture", onCancel);
+            button.addEventListener("pointermove", onMove);
+            button.addEventListener("pointerup", release);
+            button.addEventListener("pointercancel", release);
+            button.addEventListener("lostpointercapture", release);
 
             cleanups.push(() => {
                 button.removeEventListener("pointerdown", onDown);
-                button.removeEventListener("pointerup", onUp);
-                button.removeEventListener("pointercancel", onCancel);
-                button.removeEventListener("lostpointercapture", onCancel);
+                button.removeEventListener("pointermove", onMove);
+                button.removeEventListener("pointerup", release);
+                button.removeEventListener("pointercancel", release);
+                button.removeEventListener("lostpointercapture", release);
             });
         });
 
         game.detachTouchControls = () => {
             cleanups.forEach((cleanup) => cleanup());
+            game.touchUi = null;
             game.detachTouchControls = null;
         };
+    }
+
+    function updateTouchUi(game, state) {
+        const ui = game.touchUi;
+
+        if (!ui || !state) {
+            return;
+        }
+
+        const slot = state.yourSlot;
+        const pilot = (state.pilots || []).find((item) => item.slot === slot);
+        const ownPlane = (state.planes || []).find(
+            (item) => item.slot === slot && item.alive && !item.abandoned);
+        const kind = ownPlane?.kind || pilot?.kind || "biplane";
+
+        if (ui.container.dataset.kind !== kind) {
+            ui.container.dataset.kind = kind;
+        }
+
+        if (ui.abilityLabel) {
+            const label = kind === "biplane" ? "Ускор." : "Рывок";
+
+            if (ui.abilityLabel.textContent !== label) {
+                ui.abilityLabel.textContent = label;
+            }
+        }
+
+        let mode = "eject";
+        let label = "Покинуть аппарат";
+
+        if (pilot && pilot.state !== "inplane") {
+            const canReenter = (state.planes || []).some((plane) =>
+                plane.slot === slot
+                && plane.alive
+                && plane.abandoned
+                && Math.hypot(plane.x - pilot.x, plane.y - pilot.y) < 90);
+
+            if (canReenter) {
+                mode = "reenter";
+                label = "Вернуться в аппарат";
+            } else if (pilot.state === "parachuting") {
+                mode = "close";
+                label = "Сложить парашют";
+            } else if (pilot.parachuteBroken) {
+                mode = "disabled";
+                label = "Купол повреждён";
+            } else {
+                mode = "open";
+                label = "Раскрыть парашют";
+            }
+        }
+
+        const modeKey = `${mode}|${kind}`;
+
+        if (game.touchMode !== modeKey && ui.context) {
+            ui.context.dataset.touchState = mode;
+            ui.context.className = `touch-button touch-context touch-action-${mode}`;
+            ui.context.setAttribute("aria-label", label);
+            game.touchMode = modeKey;
+        }
+
+        if (ui.reload) {
+            const loaded = kind === "biplane"
+                && !!ownPlane
+                && ownPlane.ammo > 0
+                && !(ownPlane.reload > 0);
+
+            ui.reload.style.display = kind === "biplane" && ownPlane ? "flex" : "none";
+            ui.reload.classList.toggle("touch-reload-empty", !loaded);
+            ui.reload.setAttribute(
+                "aria-label",
+                loaded ? `Перезарядка, патронов ${ownPlane.ammo}` : "Магазин пуст");
+        }
+
+        if (ui.ability) {
+            const cooldown = kind === "biplane"
+                ? (ownPlane?.boostCooldown || 0)
+                : (ownPlane?.dashCooldown || 0);
+            const degrees = Math.round(Math.min(1, cooldown / 6) * 360);
+
+            if (game.touchCooldown !== degrees) {
+                ui.ability.style.setProperty("--cooldown-deg", `${degrees}deg`);
+                game.touchCooldown = degrees;
+            }
+        }
+
+        if (ui.arrow && kind === "pterodactyl" && ownPlane) {
+            const angle = game.touch.aimActive
+                ? Math.atan2(game.touch.aimY - ownPlane.y, game.touch.aimX - ownPlane.x)
+                : (ownPlane.angle || 0);
+            const degrees = Math.round((angle * 180) / Math.PI);
+            const power = Math.max(0, Math.min(1, ownPlane.charge || 0));
+            const powerKey = Math.round(power * 100);
+
+            if (game.touchAngle !== degrees) {
+                ui.arrow.style.setProperty("--throw-angle", `${degrees}deg`);
+                game.touchAngle = degrees;
+            }
+
+            if (game.touchPower !== powerKey) {
+                ui.arrow.style.setProperty("--throw-power", String(power));
+                game.touchPower = powerKey;
+            }
+        }
     }
 
     function attachInput(game) {
@@ -1529,7 +1700,6 @@
                 aimX: 0,
                 aimY: 0,
                 aimActive: false,
-                aimFire: false,
                 fire: false
             },
             view: { worldWidth: 1600, worldHeight: 900, scale: 1, offsetX: 0, offsetY: 0 },
@@ -1543,6 +1713,7 @@
             lastTimestamp: 0,
             particles: [],
             rafId: 0,
+            touchUi: null,
             handlers: {}
         };
 

@@ -34,9 +34,10 @@ public sealed class GameHub : Hub
     /// Создаёт сетевую комнату.
     /// </summary>
     /// <param name="kind">Класс аппарата хозяина.</param>
+    /// <param name="settings">Правила комнаты. Пустые значения означают стандартные.</param>
     /// <returns>Информация о комнате.</returns>
-    public Task<RoomInfo> CreateRoom(string kind) =>
-        _rooms.CreateOnlineRoomAsync(Context.ConnectionId, kind);
+    public Task<RoomInfo> CreateRoom(string kind, RoomSettings? settings = null) =>
+        _rooms.CreateOnlineRoomAsync(Context.ConnectionId, kind, settings);
 
     /// <summary>
     /// Присоединяется к сетевой комнате по коду.

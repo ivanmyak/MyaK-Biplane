@@ -596,10 +596,87 @@ public sealed class PilotTests
     }
 
     /// <summary>
-    /// Слишком быстрое падение разбивает лётчика, но не приносит очко сопернику.
+    /// Попадание в купол уничтожает парашют, но не убивает лётчика.
     /// </summary>
     [Fact]
-    public void UnsafeLanding_KillsPilotWithoutScore()
+    public void ParachuteHit_DestroysCanopyWithoutKillingPilot()
+    {
+        var world = new GameWorld(seed: 38);
+        world.Reset(PlaneKind.Pterodactyl, PlaneKind.Biplane, secondIsBot: false);
+        TestSetup.ReadyPlane(world, 0);
+        var shooter = TestSetup.ReadyPlane(world, 1);
+        world.Step(new PlayerInput { Eject = true }, default, 1f / 60f);
+
+        var pilot = world.Pilot(0);
+        pilot.State = PilotState.Parachuting;
+        pilot.Position = new Vector2(500f, 400f);
+        pilot.Velocity = new Vector2(0f, GameBalance.PilotParachuteFallSpeed);
+
+        // Уводим бесхозный аппарат, чтобы пуля не попала в него раньше купола.
+        var abandoned = Assert.Single(
+            world.Planes,
+            candidate => candidate.Slot == 0 && candidate.IsAbandoned);
+        abandoned.Position = new Vector2(1200f, 200f);
+        abandoned.Velocity = Vector2.Zero;
+
+        var canopyY = pilot.Position.Y - GameBalance.PilotParachuteCanopyOffsetY;
+        shooter.Position = new Vector2(564f, canopyY);
+        shooter.Velocity = Vector2.Zero;
+        shooter.Rotation = MathF.PI;
+
+        for (var i = 0; i < 10 && !pilot.IsParachuteBroken; i++)
+        {
+            world.Step(default, new PlayerInput { Fire = true }, 1f / 60f);
+        }
+
+        Assert.True(pilot.IsParachuteBroken);
+        Assert.Equal(PilotState.Falling, pilot.State);
+        Assert.Equal(0, world.Score(0));
+        Assert.Equal(0, world.Score(1));
+        Assert.Contains(world.Events, gameEvent => gameEvent.Type == GameEventType.ParachuteDestroyed);
+
+        world.Step(new PlayerInput { Parachute = true }, default, 1f / 60f);
+
+        Assert.Equal(PilotState.Falling, pilot.State);
+        Assert.DoesNotContain(world.Events, gameEvent => gameEvent.Type == GameEventType.ParachuteOpened);
+    }
+
+    /// <summary>
+    /// Уничтоженный парашют остаётся недоступным до возрождения лётчика.
+    /// </summary>
+    [Fact]
+    public void BrokenParachute_CannotOpenUntilRespawn()
+    {
+        var world = new GameWorld(seed: 39);
+        world.Reset(PlaneKind.Biplane, PlaneKind.Pterodactyl, secondIsBot: false);
+        TestSetup.ReadyPlane(world, 0);
+        TestSetup.ReadyPlane(world, 1);
+        world.Step(new PlayerInput { Eject = true }, default, 1f / 60f);
+
+        var pilot = world.Pilot(0);
+        pilot.State = PilotState.Falling;
+        pilot.IsParachuteBroken = true;
+        pilot.Position = new Vector2(500f, 300f);
+        pilot.Velocity = Vector2.Zero;
+
+        world.Step(new PlayerInput { Parachute = true }, default, 1f / 60f);
+
+        Assert.Equal(PilotState.Falling, pilot.State);
+        Assert.DoesNotContain(world.Events, gameEvent => gameEvent.Type == GameEventType.ParachuteOpened);
+
+        pilot.State = PilotState.WaitingRespawn;
+        pilot.RespawnRemaining = 0f;
+        world.Step(default, default, 1f / 60f);
+
+        Assert.Equal(PilotState.InPlane, pilot.State);
+        Assert.False(pilot.IsParachuteBroken);
+    }
+
+    /// <summary>
+    /// Слишком быстрое падение разбивает лётчика и приносит очко сопернику.
+    /// </summary>
+    [Fact]
+    public void UnsafeLanding_KillsPilotAndScoresForOpponent()
     {
         var world = new GameWorld(seed: 33);
         world.Reset(PlaneKind.Biplane, PlaneKind.Pterodactyl, secondIsBot: false);
@@ -616,7 +693,7 @@ public sealed class PilotTests
 
         Assert.Equal(PilotState.WaitingRespawn, pilot.State);
         Assert.Equal(0, world.Score(0));
-        Assert.Equal(0, world.Score(1));
+        Assert.Equal(1, world.Score(1));
         Assert.Contains(world.Events, gameEvent => gameEvent.Type == GameEventType.PilotKilled);
     }
 
@@ -869,10 +946,10 @@ public sealed class BotAndSessionTests
     }
 
     /// <summary>
-    /// Пять уничтожений завершают матч и определяют победителя.
+    /// Десять уничтожений завершают матч и определяют победителя.
     /// </summary>
     [Fact]
-    public void FiveKills_FinishMatch_AndSetWinner()
+    public void TenKills_FinishMatch_AndSetWinner()
     {
         var world = new GameWorld(seed: 31);
         world.Reset(PlaneKind.Biplane, PlaneKind.Pterodactyl, secondIsBot: false);

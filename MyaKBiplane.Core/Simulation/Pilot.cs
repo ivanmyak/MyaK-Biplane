@@ -69,6 +69,12 @@ public sealed class Pilot
     /// <summary>Идентификатор аппарата, в котором находится лётчик.</summary>
     public int PlaneId { get; internal set; }
 
+    /// <summary>
+    /// Уничтожен ли парашют попаданием снаряда. Пока флаг поднят, раскрыть купол
+    /// нельзя: лётчик падает без парашюта до возрождения.
+    /// </summary>
+    public bool IsParachuteBroken { get; internal set; }
+
     /// <summary>Была ли кнопка покидания аппарата нажата на предыдущем шаге.</summary>
     internal bool WasEjectPressed { get; set; }
 

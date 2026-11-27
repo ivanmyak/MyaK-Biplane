@@ -27,15 +27,20 @@ public sealed class GameWorld
     /// </summary>
     /// <param name="balance">Параметры баланса. Если не заданы, используется <see cref="GameBalance.Default"/>.</param>
     /// <param name="seed">Начальное зерно случайных чисел.</param>
-    public GameWorld(GameBalance? balance = null, int seed = 0)
+    /// <param name="rules">Правила матча. Если не заданы, используются <see cref="MatchRules.Default"/>.</param>
+    public GameWorld(GameBalance? balance = null, int seed = 0, MatchRules? rules = null)
     {
         Balance = balance ?? GameBalance.Default;
+        Rules = (rules ?? MatchRules.Default).Normalized();
         Seed = seed;
         Reset(PlaneKind.Biplane, PlaneKind.Pterodactyl, secondIsBot: true);
     }
 
     /// <summary>Параметры баланса матча.</summary>
     public GameBalance Balance { get; }
+
+    /// <summary>Правила матча: лимит уничтожений и доступные механики.</summary>
+    public MatchRules Rules { get; }
 
     /// <summary>Зерно случайных чисел матча.</summary>
     public int Seed { get; }
@@ -219,6 +224,7 @@ public sealed class GameWorld
                 UpdatePlane(plane, input, dt);
 
                 if (input.Eject
+                    && Rules.AllowEjection
                     && !pilot.WasEjectPressed
                     && pilot.State == PilotState.InPlane
                     && plane.IsAlive
@@ -615,7 +621,7 @@ public sealed class GameWorld
 
         if (pilot.State is PilotState.Falling or PilotState.Parachuting)
         {
-            if (input.Parachute && !pilot.WasParachutePressed)
+            if (input.Parachute && !pilot.WasParachutePressed && !pilot.IsParachuteBroken)
             {
                 pilot.State = pilot.State == PilotState.Parachuting
                     ? PilotState.Falling
@@ -646,7 +652,9 @@ public sealed class GameWorld
 
                 if (impactSpeed > GameBalance.PilotSafeLandingSpeed)
                 {
-                    KillPilot(pilot, attackerSlot: -1, pilot.Position);
+                    // Разбившийся лётчик приносит очко сопернику: у игрока всего две стороны,
+                    // и смерть от собственной ошибки всё равно идёт в счёт противника.
+                    KillPilot(pilot, attackerSlot: OppositeSlot(pilot.Slot), pilot.Position);
                 }
                 else
                 {
@@ -750,7 +758,7 @@ public sealed class GameWorld
     /// Убивает лётчика вне аппарата и запускает возрождение.
     /// </summary>
     /// <param name="pilot">Лётчик.</param>
-    /// <param name="attackerSlot">Слот виновника или -1, если лётчик разбился сам.</param>
+    /// <param name="attackerSlot">Слот виновника или -1, если очко никому не начисляется.</param>
     /// <param name="position">Позиция гибели.</param>
     private void KillPilot(Pilot pilot, int attackerSlot, Vector2 position)
     {
@@ -770,6 +778,24 @@ public sealed class GameWorld
         {
             AwardScore(attackerSlot, position);
         }
+    }
+
+    /// <summary>
+    /// Уничтожает купол парашюта: лётчик переходит в свободное падение и теряет
+    /// возможность раскрыть парашют до возрождения.
+    /// </summary>
+    /// <param name="pilot">Лётчик под куполом.</param>
+    /// <param name="position">Позиция попадания в купол.</param>
+    private void DestroyParachute(Pilot pilot, Vector2 position)
+    {
+        if (pilot.State != PilotState.Parachuting || pilot.IsParachuteBroken)
+        {
+            return;
+        }
+
+        pilot.IsParachuteBroken = true;
+        pilot.State = PilotState.Falling;
+        _events.Add(new GameEvent(GameEventType.ParachuteDestroyed, position, 0f, pilot.Slot));
     }
 
     private bool TryReenterPlane(Pilot pilot)
@@ -829,6 +855,7 @@ public sealed class GameWorld
         pilot.RespawnRemaining = 0f;
         pilot.WasEjectPressed = false;
         pilot.WasParachutePressed = false;
+        pilot.IsParachuteBroken = false;
 
         if (announce)
         {
@@ -889,7 +916,7 @@ public sealed class GameWorld
 
         _scores[slot]++;
 
-        if (_scores[slot] < GameBalance.ScoreToWin)
+        if (_scores[slot] < Rules.ScoreToWin)
         {
             return;
         }
@@ -969,6 +996,7 @@ public sealed class GameWorld
             }
 
             Pilot? hitPilot = null;
+            var canopyHit = false;
 
             foreach (var pilot in _pilots)
             {
@@ -976,6 +1004,23 @@ public sealed class GameWorld
                     || pilot.State is not (PilotState.Falling or PilotState.Parachuting or PilotState.OnGround))
                 {
                     continue;
+                }
+
+                // Купол парашюта — отдельная цель: попадание в него не убивает лётчика,
+                // но лишает его парашюта до конца жизни.
+                if (pilot.State == PilotState.Parachuting)
+                {
+                    var canopy = pilot.Position
+                        + new Vector2(0f, -GameBalance.PilotParachuteCanopyOffsetY);
+                    var canopyHitRadius = projectile.Radius + GameBalance.PilotParachuteCanopyRadius;
+
+                    if (Vector2.DistanceSquared(projectile.Position, canopy)
+                        <= canopyHitRadius * canopyHitRadius)
+                    {
+                        hitPilot = pilot;
+                        canopyHit = true;
+                        break;
+                    }
                 }
 
                 var pilotHitRadius = projectile.Radius + GameBalance.PilotRadius;
@@ -993,7 +1038,15 @@ public sealed class GameWorld
                 continue;
             }
 
-            KillPilot(hitPilot, projectile.OwnerSlot, projectile.Position);
+            if (canopyHit)
+            {
+                DestroyParachute(hitPilot, projectile.Position);
+            }
+            else
+            {
+                KillPilot(hitPilot, projectile.OwnerSlot, projectile.Position);
+            }
+
             _projectiles.RemoveAt(i);
         }
     }
