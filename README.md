@@ -175,17 +175,16 @@ same-origin `/hubs/game`. Файл `appsettings.Development.json` с `localhost:
 ## Сеть и архитектура
 
 - Матч с ботом: `LocalMatchClient` + `GameSession`, всё считается в браузере офлайн.
-- Сетевой матч: `P2pMatchClient` + `js/webrtc.js`. Хост запускает `HostGameSession`
-  (шаг 60 Гц) и шлёт снимки ~30 Гц по DataChannel; гость шлёт `InputState` ~30 Гц.
-- Серверный хаб содержит только `Ping`, `CreateRoom`, `JoinRoom`, `SendSignal`, `LeaveRoom`
-  и события `RoomUpdated`, `Signal`, `RoomClosed`. Ввод, снимки, пауза и реванш идут
-  напрямую между игроками. Настройки комнаты хранятся на сервере и попадают в `RoomInfo`,
-  а правила симуляции (`MatchRules`) хост применяет в `HostGameSession`.
+- Сетевой матч: `P2pMatchClient` + `js/webrtc.js` без сервера сигналинга. Хост создаёт
+  код `MYAK1:…` с SDP-предложением, гость вставляет его и возвращает код ответа;
+  в коде есть версия клиента, правила комнаты и ICE-кандидаты.
+- Хост запускает `HostGameSession` (шаг 60 Гц) и шлёт снимки ~30 Гц по DataChannel;
+  гость шлёт `InputState` ~30 Гц. Пауза и реванш тоже идут по DataChannel.
+- Настройки комнаты (`RoomSettings`) хост передаёт кодом, правила симуляции (`MatchRules`)
+  применяются в `HostGameSession`. Сервер в матче не участвует.
 - STUN — публичные серверы Google. TURN пока не подключён: на симметричном NAT/CGNAT
   прямая связь может не установиться (подробности в [`docs/telegram.md`](docs/telegram.md)).
 - Хост должен держать вкладку активной: при сворачивании браузер замедляет таймеры.
-- В production клиент обращается к `/hubs/game` на том же origin; в development адрес
-  задаётся в `appsettings.Development.json`. SignalR использует WebSocket без negotiate.
 
 ## Тесты
 
@@ -206,28 +205,25 @@ dotnet test MyaKBiplane.Tests/MyaKBiplane.Tests.csproj
 
 ## Публикация в GitHub Pages
 
-На GitHub Pages выкладывается только статический клиент `MyaKBiplane.Client`. Сервер
-`MyaKBiplane.Server` размещается отдельно на Docker-хостинге с HTTPS и WebSocket — без
-него не работает ни сетевой режим, ни матч с ботом.
+На GitHub Pages выкладывается только статический клиент `MyaKBiplane.Client`.
+Сервер **не нужен**: матч с ботом считается локально, а сетевой матч использует
+P2P с ручным обменом кодами. Документы по Fly.io остаются в репозитории как опция
+на будущее, но для игры их выполнять не обязательно.
 
-Пошаговая инструкция: [`docs/deployment.md`](docs/deployment.md). Отдельное руководство по серверу
-на Fly.io (flyctl, `fly.toml`, секреты, восстановление машин): [`docs/fly-deployment.md`](docs/fly-deployment.md). Коротко:
+Пошаговая инструкция: [`docs/deployment.md`](docs/deployment.md). Коротко:
 
-1. Задеплойте сервер на Fly.io из корня репозитория (`fly.toml` уже готов):
+1. **Settings → Pages → Source = GitHub Actions**.
+2. Запустите workflow **Deploy client to GitHub Pages** (или просто смержите в `master`).
+3. Откройте https://ivanmyak.github.io/MyaK-Biplane/ и проверьте версию внизу меню.
 
-   ```powershell
-   $flyctl = "$env:USERPROFILE\.fly\bin\flyctl.exe"
-   & $flyctl auth login
-   & $flyctl deploy --app myak-biplane-server --ha=false --yes
-   ```
+Как играть по сети:
 
-   Адрес будет `https://myak-biplane-server.fly.dev`, health-check — `/health`.
-2. **Settings → Pages → Source = GitHub Actions**.
-3. В **Settings → Secrets and variables → Actions → Variables** создайте
-   `SERVER_BASE_URL` = `https://myak-biplane-server.fly.dev`.
-4. Запустите workflow **Deploy client to GitHub Pages** (или смержите в `master`).
+1. Хост выбирает аппарат и правила, нажимает «Создать комнату», копирует код приглашения
+   и отправляет его сопернику (например, в Telegram).
+2. Гость вставляет код, выбирает аппарат, получает код ответа и отправляет его хосту.
+3. Хост вставляет код ответа и нажимает «Подключить соперника» — начинается матч.
 
-Адрес игры: `https://ivanmyak.github.io/MyaK-Biplane/`.
+Если версии клиента у игроков разные, обмен кодов завершится ошибкой с подсказкой.
 
 ### Версия проекта
 

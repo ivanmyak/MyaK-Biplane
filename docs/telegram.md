@@ -7,7 +7,7 @@
 ```
 Telegram WebView ── HTTPS ──> GitHub Pages (клиент, Mini App)
                                   │
-                                  └── WSS/HTTPS ──> MyaKBiplane.Server (Fly.io, SignalR)
+                                  └── WebRTC DataChannel ──> другой игрок (без сервера)
 ```
 
 ## Что реализовано
@@ -58,26 +58,15 @@ Telegram WebView ── HTTPS ──> GitHub Pages (клиент, Mini App)
 Мини-приложение можно открыть и по прямой ссылке вида
 `https://t.me/<bot_username>/<app_short_name>`.
 
-## 2. Подтвердить сервер и CORS
+## 2. Сервер не нужен
 
-Отдельных настроек CORS для Telegram **не требуется**: Mini App открывает тот же origin
-`https://ivanmyak.github.io`, что и обычная страница GitHub Pages. Он уже разрешён в
-`Cors__AllowedOrigins__0` на Fly.io (см. [`deployment.md`](deployment.md)).
+Игра работает полностью на GitHub Pages: матч с ботом считается в браузере, а сетевой
+матч устанавливается напрямую между игроками. Хост передаёт сопернику код `MYAK1:…`,
+гость возвращает код ответа — обмен идёт через любой чат. Проверка версии встроена
+в код, поэтому разные сборки не смогут соединиться.
 
-Если вы публикуете Mini App на другом домене, добавьте его origin в CORS:
-
-```powershell
-& $flyctl secrets set Cors__AllowedOrigins__0=https://game.example.com --app myak-biplane-server
-```
-
-Проверьте, что сервер доступен по HTTPS и отвечает:
-
-```
-https://myak-biplane-server.fly.dev/health  →  {"status":"ok"}
-```
-
-Иначе меню откроется, но сетевой матч не запустится. Матч с ботом считается локально
-и работает без сервера.
+CORS настраивать не нужно: Mini App открывает тот же origin, что и обычная страница
+GitHub Pages. Разделы про Fly.io в документах можно пропустить.
 
 ## 3. Проверить в Telegram
 

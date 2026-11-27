@@ -1,8 +1,7 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Http.Connections;
-using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.JSInterop;
 using MyaKBiplane.Core.Simulation;
@@ -12,35 +11,31 @@ using MyaKBiplane.Shared.Contracts;
 namespace MyaKBiplane.Client.Services;
 
 /// <summary>
-/// Сетевой матч, в котором игроки связаны напрямую через WebRTC DataChannel.
+/// Сетевой матч напрямую между браузерами без сервера сигналинга.
 /// </summary>
 /// <remarks>
-/// SignalR нужен только на старте: сервер выдаёт код комнаты и ретранслирует SDP/ICE.
-/// После открытия канала хост считает <see cref="HostGameSession"/> и шлёт снимки,
-/// гость шлёт ввод. Сервер в самом матче не участвует.
+/// Хост создаёт код с SDP-предложением, гость вставляет его и возвращает код ответа.
+/// После этого открывается DataChannel: хост считает <see cref="HostGameSession"/>
+/// и шлёт снимки, гость шлёт ввод. GitHub Pages — единственная инфраструктура.
 /// </remarks>
-public sealed class P2pMatchClient : IMatchClient
+public sealed class P2pMatchClient : IManualMatchClient
 {
-    private const int ConnectAttempts = 3;
+    private const string CodePrefix = "MYAK1:";
     private const double SnapshotIntervalMs = 33d;
     private const double InputIntervalMs = 33d;
-
-    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(8);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNameCaseInsensitive = true
     };
 
-    private readonly NavigationManager _navigation;
-    private readonly IConfiguration _configuration;
     private readonly IJSRuntime _js;
+    private readonly string _version;
 
-    private HubConnection? _connection;
     private DotNetObjectReference<P2pMatchClient>? _self;
 
-    private string _code = string.Empty;
     private int _yourSlot;
     private bool _isHost;
     private PlaneKind _hostKind = PlaneKind.Biplane;
@@ -51,14 +46,11 @@ public sealed class P2pMatchClient : IMatchClient
     private int _pausedBySlot = -1;
     private int? _rematchOfferSlot;
     private string? _notice;
-
-    private readonly List<string> _pendingSignals = new();
-    private CancellationTokenSource? _peerTimeoutCts;
+    private string? _outgoingCode;
+    private bool _kindAdjusted;
 
     private bool _peerStarted;
     private bool _peerConnected;
-    private bool _signalsReady;
-    private bool _offerCreated;
     private HostGameSession? _session;
     private string _latestSnapshot = string.Empty;
 
@@ -71,19 +63,14 @@ public sealed class P2pMatchClient : IMatchClient
     private double _rttMilliseconds = -1;
 
     /// <summary>
-    /// Создаёт P2P-клиент матча.
+    /// Создаёт P2P-клиент.
     /// </summary>
-    /// <param name="navigation">Навигация Blazor.</param>
-    /// <param name="configuration">Конфигурация приложения.</param>
+    /// <param name="configuration">Конфигурация приложения (версия для проверки кодов).</param>
     /// <param name="js">JavaScript-рантайм для WebRTC.</param>
-    public P2pMatchClient(
-        NavigationManager navigation,
-        IConfiguration configuration,
-        IJSRuntime js)
+    public P2pMatchClient(IConfiguration configuration, IJSRuntime js)
     {
-        _navigation = navigation;
-        _configuration = configuration;
         _js = js;
+        _version = configuration["App:Version"] ?? "0.0.0";
     }
 
     /// <inheritdoc />
@@ -93,19 +80,24 @@ public sealed class P2pMatchClient : IMatchClient
     public event Action<string>? SnapshotReceived;
 
     /// <inheritdoc />
+#pragma warning disable CS0067 // без сервера некому закрывать комнату
     public event Action<string>? RoomClosed;
+#pragma warning restore CS0067
 
     /// <inheritdoc />
     public event Action<string>? ConnectionClosed;
 
     /// <inheritdoc />
-    public Uri? HubUri => BuildHubUri();
+    public Uri? HubUri => null;
 
     /// <inheritdoc />
-    public Task ConnectAsync() =>
-        _connection is { State: HubConnectionState.Connected }
-            ? Task.CompletedTask
-            : ConnectWithRetriesAsync();
+    public string? OutgoingCode => _outgoingCode;
+
+    /// <summary>Был ли класс гостя автоматически изменён из-за правила «разные аппараты».</summary>
+    public bool KindAdjusted => _kindAdjusted;
+
+    /// <inheritdoc />
+    public Task ConnectAsync() => Task.CompletedTask;
 
     /// <inheritdoc />
     public async Task<RoomInfo> CreateRoomAsync(string kind, RoomSettings settings)
@@ -115,22 +107,78 @@ public sealed class P2pMatchClient : IMatchClient
         _hostKind = ParseKind(kind);
         _guestKind = GameWorld.Opposite(_hostKind);
         _settings = settings.Normalized();
+        _status = "waiting";
 
-        var info = await InvokeHubAsync<RoomInfo>("CreateRoom", kind, _settings);
-        ApplyServerInfo(info);
+        await StartPeerAsync();
+
+        var rtc = await _js.InvokeAsync<string>("myakWebrtc.createOfferCode");
+        _outgoingCode = Encode(new InviteCode
+        {
+            Version = _version,
+            HostKind = KindName(_hostKind),
+            Settings = _settings,
+            Rtc = rtc
+        });
+
+        _roomInfo = BuildInfo();
+        Publish();
         return _roomInfo;
     }
 
     /// <inheritdoc />
     public async Task<RoomInfo> JoinRoomAsync(string code, string kind)
     {
+        var invite = Decode(code);
+
         _isHost = false;
         _yourSlot = 1;
-        _guestKind = ParseKind(kind);
+        _hostKind = ParseKind(invite.HostKind);
+        _settings = (invite.Settings ?? RoomSettings.Default).Normalized();
 
-        var info = await InvokeHubAsync<RoomInfo>("JoinRoom", code, kind);
-        ApplyServerInfo(info);
+        var requestedKind = ParseKind(kind);
+        _guestKind = _settings.ResolveGuestKind(_hostKind, requestedKind);
+        _kindAdjusted = _guestKind != requestedKind;
+
+        await StartPeerAsync();
+
+        var rtc = await _js.InvokeAsync<string>("myakWebrtc.createAnswerCode", invite.Rtc);
+        _outgoingCode = Encode(new InviteCode
+        {
+            Version = _version,
+            HostKind = KindName(_hostKind),
+            GuestKind = KindName(_guestKind),
+            Settings = _settings,
+            Rtc = rtc
+        });
+
+        // Гость готов к бою: как только DataChannel откроется, начнём слать ввод.
+        _status = "playing";
+        _roomInfo = BuildInfo();
+        Publish();
         return _roomInfo;
+    }
+
+    /// <inheritdoc />
+    public async Task AcceptCodeAsync(string code)
+    {
+        if (!_isHost)
+        {
+            throw new InvalidOperationException("Код ответа вводит хозяин комнаты.");
+        }
+
+        var answer = Decode(code);
+
+        if (!string.IsNullOrWhiteSpace(answer.GuestKind))
+        {
+            _guestKind = ParseKind(answer.GuestKind);
+        }
+
+        if (answer.Settings is not null && !SameSettings(answer.Settings, _settings))
+        {
+            throw new InvalidOperationException("Соперник прислал код с другими правилами комнаты.");
+        }
+
+        await _js.InvokeVoidAsync("myakWebrtc.acceptAnswerCode", answer.Rtc);
     }
 
     /// <inheritdoc />
@@ -197,23 +245,10 @@ public sealed class P2pMatchClient : IMatchClient
     }
 
     /// <inheritdoc />
-    public async Task LeaveRoomAsync()
+    public Task LeaveRoomAsync()
     {
         ResetPeer();
-
-        var connection = _connection;
-
-        if (connection is not null && connection.State == HubConnectionState.Connected)
-        {
-            try
-            {
-                await connection.InvokeAsync("LeaveRoom");
-            }
-            catch (Exception)
-            {
-                // Соединение уже могло закрыться.
-            }
-        }
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -239,41 +274,11 @@ public sealed class P2pMatchClient : IMatchClient
     {
         ResetPeer();
 
-        var connection = _connection;
-        _connection = null;
-        _self?.Dispose();
+        var self = _self;
         _self = null;
+        self?.Dispose();
 
-        if (connection is not null)
-        {
-            await connection.DisposeAsync();
-        }
-    }
-
-    /// <summary>Передаёт SDP/ICE через сервер.</summary>
-    /// <param name="json">JSON сигнала.</param>
-    [JSInvokable]
-    public void OnWebRtcSignal(string json)
-    {
-        var connection = _connection;
-
-        if (connection is not null && connection.State == HubConnectionState.Connected)
-        {
-            _ = SendHubSignalAsync(connection, json);
-        }
-    }
-
-    /// <summary>Гость сообщил, что готов к соединению.</summary>
-    [JSInvokable]
-    public void OnPeerReady()
-    {
-        if (!_isHost || !_peerStarted || _offerCreated)
-        {
-            return;
-        }
-
-        _offerCreated = true;
-        _ = CreateOfferAsync();
+        await ValueTask.CompletedTask;
     }
 
     /// <summary>Вызывается при открытии прямого DataChannel.</summary>
@@ -286,19 +291,18 @@ public sealed class P2pMatchClient : IMatchClient
         }
 
         _peerConnected = true;
-        _peerTimeoutCts?.Cancel();
 
         if (_isHost)
         {
             _session = new HostGameSession(
                 _hostKind,
                 _guestKind,
-                seed: HashCode.Combine(_code, Environment.TickCount),
+                seed: HashCode.Combine(Environment.TickCount, (int)_hostKind),
                 settings: _settings);
             _session.Start();
 
             _status = _session.Status;
-            _roomInfo = _session.BuildInfo(_code, _yourSlot);
+            _roomInfo = _session.BuildInfo(string.Empty, _yourSlot);
 
             var (hostSnapshot, guestSnapshot) = _session.CreateSnapshotPairJson();
             _latestSnapshot = hostSnapshot;
@@ -308,6 +312,11 @@ public sealed class P2pMatchClient : IMatchClient
             {
                 Type = "snapshot",
                 Snapshot = guestSnapshot
+            });
+            SendPeer(new PeerMessage
+            {
+                Type = "room",
+                Room = _session.BuildInfo(string.Empty, 1 - _yourSlot)
             });
         }
 
@@ -379,83 +388,16 @@ public sealed class P2pMatchClient : IMatchClient
             : reason);
     }
 
-    private async Task ConnectWithRetriesAsync()
+    private async Task StartPeerAsync()
     {
-        if (_connection is not null)
+        if (_peerStarted)
         {
-            var old = _connection;
-            _connection = null;
-            await old.DisposeAsync();
+            return;
         }
 
-        Exception? lastError = null;
-
-        for (var attempt = 1; attempt <= ConnectAttempts; attempt++)
-        {
-            var connection = CreateConnection();
-
-            try
-            {
-                var start = connection.StartAsync();
-
-                if (await Task.WhenAny(start, Task.Delay(ConnectTimeout)) != start)
-                {
-                    throw new TimeoutException(
-                        $"Сервер не ответил за {ConnectTimeout.TotalSeconds:0} с.");
-                }
-
-                await start;
-                _connection = connection;
-                return;
-            }
-            catch (Exception exception)
-            {
-                lastError = exception;
-                await connection.DisposeAsync();
-
-                if (attempt < ConnectAttempts)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(400 * attempt));
-                }
-            }
-        }
-
-        throw new InvalidOperationException(DescribeConnectFailure(lastError), lastError);
-    }
-
-    private HubConnection CreateConnection()
-    {
-        var connection = new HubConnectionBuilder()
-            .WithUrl(BuildHubUri(), options =>
-            {
-                options.SkipNegotiation = true;
-                options.Transports = HttpTransportType.WebSockets;
-            })
-            .Build();
-
-        connection.On<RoomInfo>("RoomUpdated", ApplyServerInfo);
-        connection.On<string>("Signal", json =>
-        {
-            lock (_pendingSignals)
-            {
-                if (!_signalsReady)
-                {
-                    // SDP/ICE может прийти раньше, чем WebRTC-модуль готов его принять.
-                    _pendingSignals.Add(json);
-                    return;
-                }
-            }
-
-            _ = HandleSignalAsync(json);
-        });
-        connection.On<string>("RoomClosed", reason => RoomClosed?.Invoke(reason));
-        connection.Closed += error =>
-        {
-            ConnectionClosed?.Invoke(error?.Message ?? "Соединение с сервером закрыто.");
-            return Task.CompletedTask;
-        };
-
-        return connection;
+        _peerStarted = true;
+        _self ??= DotNetObjectReference.Create(this);
+        await _js.InvokeVoidAsync("myakWebrtc.start", _isHost, _self);
     }
 
     private string HostTick(InputState input, double timestamp)
@@ -556,28 +498,6 @@ public sealed class P2pMatchClient : IMatchClient
         return _latestSnapshot;
     }
 
-    private void ApplyServerInfo(RoomInfo info)
-    {
-        _code = info.Code;
-        _yourSlot = info.YourSlot;
-        _isHost = info.IsHost;
-
-        _hostKind = ParseKind(info.HostKind);
-        _settings = info.Settings.Normalized();
-
-        if (!string.IsNullOrWhiteSpace(info.GuestKind))
-        {
-            _guestKind = ParseKind(info.GuestKind);
-        }
-
-        ApplyRoomState(info with { PeerConnected = _peerConnected });
-
-        if (info.OpponentConnected && !_peerStarted)
-        {
-            _ = StartPeerAsync();
-        }
-    }
-
     private void ApplyRoomState(RoomInfo info)
     {
         _status = info.Status;
@@ -586,6 +506,7 @@ public sealed class P2pMatchClient : IMatchClient
             ? info.YourSlot
             : info.RematchOfferedByOpponent ? 1 - info.YourSlot : null;
         _notice = info.Notice;
+        _settings = info.Settings.Normalized();
         _roomInfo = info;
 
         Publish();
@@ -600,82 +521,33 @@ public sealed class P2pMatchClient : IMatchClient
             RematchOfferedByYou = _rematchOfferSlot == _yourSlot,
             RematchOfferedByOpponent = _rematchOfferSlot is not null && _rematchOfferSlot != _yourSlot,
             Notice = _notice,
+            Settings = _settings,
             PeerConnected = _peerConnected
         };
 
         RoomUpdated?.Invoke(_roomInfo);
     }
 
-    private async Task StartPeerAsync()
+    private void PublishSessionState()
     {
-        _peerStarted = true;
-
-        try
-        {
-            _self ??= DotNetObjectReference.Create(this);
-            await _js.InvokeVoidAsync("myakWebrtc.start", _isHost, _self);
-
-            _peerTimeoutCts?.Cancel();
-            _peerTimeoutCts = new CancellationTokenSource();
-            _ = WatchPeerTimeoutAsync(_peerTimeoutCts.Token);
-
-            string[] queued;
-
-            lock (_pendingSignals)
-            {
-                queued = _pendingSignals.ToArray();
-                _pendingSignals.Clear();
-                _signalsReady = true;
-            }
-
-            foreach (var json in queued)
-            {
-                await HandleSignalAsync(json);
-            }
-
-            if (!_isHost && _connection is not null)
-            {
-                // Хост создаёт offer только когда гость уже готов его принять.
-                await SendHubSignalAsync(_connection, "{\"type\":\"ready\"}");
-            }
-        }
-        catch (Exception exception)
-        {
-            ConnectionClosed?.Invoke(
-                $"Не удалось установить прямое соединение: {exception.Message}");
-        }
-    }
-
-    private async Task WatchPeerTimeoutAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(TimeSpan.FromSeconds(20), cancellationToken);
-        }
-        catch (OperationCanceledException)
+        if (_session is null)
         {
             return;
         }
 
-        if (!_peerConnected && !cancellationToken.IsCancellationRequested)
-        {
-            ConnectionClosed?.Invoke(
-                "Не удалось установить прямое соединение за 20 секунд. " +
-                "Возможно, сеть блокирует WebRTC — попробуйте другую сеть.");
-        }
-    }
+        _status = _session.Status;
+        _pausedBySlot = _session.PausedBySlot;
+        _rematchOfferSlot = _session.RematchOfferSlot;
+        _notice = _session.Notice;
 
-    private async Task CreateOfferAsync()
-    {
-        try
+        _roomInfo = _session.BuildInfo(string.Empty, _yourSlot);
+        Publish();
+
+        SendPeer(new PeerMessage
         {
-            await _js.InvokeVoidAsync("myakWebrtc.createOffer");
-        }
-        catch (JSException exception)
-        {
-            ConnectionClosed?.Invoke(
-                $"Не удалось установить прямое соединение: {exception.Message}");
-        }
+            Type = "room",
+            Room = _session.BuildInfo(string.Empty, 1 - _yourSlot)
+        });
     }
 
     private void HandleControl(PeerMessage message)
@@ -697,28 +569,6 @@ public sealed class P2pMatchClient : IMatchClient
         {
             PublishSessionState();
         }
-    }
-
-    private void PublishSessionState()
-    {
-        if (_session is null)
-        {
-            return;
-        }
-
-        _status = _session.Status;
-        _pausedBySlot = _session.PausedBySlot;
-        _rematchOfferSlot = _session.RematchOfferSlot;
-        _notice = _session.Notice;
-
-        _roomInfo = _session.BuildInfo(_code, _yourSlot);
-        Publish();
-
-        SendPeer(new PeerMessage
-        {
-            Type = "room",
-            Room = _session.BuildInfo(_code, 1 - _yourSlot)
-        });
     }
 
     private Task SendControlAsync(string action, bool accept = false)
@@ -749,14 +599,7 @@ public sealed class P2pMatchClient : IMatchClient
 
         try
         {
-            if (_js is IJSInProcessRuntime inProcess)
-            {
-                inProcess.InvokeVoid("myakWebrtc.send", json);
-            }
-            else
-            {
-                _ = SendPeerAsync(json);
-            }
+            _ = _js.InvokeVoidAsync("myakWebrtc.send", json).AsTask();
         }
         catch (JSException)
         {
@@ -766,122 +609,113 @@ public sealed class P2pMatchClient : IMatchClient
 
     private void ResetPeer()
     {
-        _peerTimeoutCts?.Cancel();
-        _peerTimeoutCts?.Dispose();
-        _peerTimeoutCts = null;
-
         _peerStarted = false;
         _peerConnected = false;
-        _signalsReady = false;
-        _offerCreated = false;
-
-        lock (_pendingSignals)
-        {
-            _pendingSignals.Clear();
-        }
         _session = null;
         _latestSnapshot = string.Empty;
         _lastTick = 0d;
         _lastSnapshotSent = 0d;
         _lastInputSent = 0d;
+        _rttMilliseconds = -1;
 
         try
         {
-            _ = ClosePeerAsync();
+            _ = _js.InvokeVoidAsync("myakWebrtc.close").AsTask();
         }
-        catch (Exception)
+        catch (JSException)
         {
             // Страница уже выгружается.
         }
     }
 
-    private async Task SendPeerAsync(string json)
+    private RoomInfo BuildInfo() => new()
     {
+        Code = string.Empty,
+        Mode = "online",
+        Status = _status,
+        YourSlot = _yourSlot,
+        IsHost = _isHost,
+        HostKind = KindName(_hostKind),
+        GuestKind = _isHost ? null : KindName(_guestKind),
+        Settings = _settings,
+        OpponentConnected = _peerConnected,
+        PeerConnected = _peerConnected
+    };
+
+    private static string Encode(InviteCode invite) =>
+        CodePrefix + Convert.ToBase64String(
+            Encoding.UTF8.GetBytes(JsonSerializer.Serialize(invite, JsonOptions)));
+
+    private InviteCode Decode(string code)
+    {
+        var trimmed = (code ?? string.Empty).Trim();
+
+        if (!trimmed.StartsWith(CodePrefix, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Это не код MyaK Biplane. Скопируйте код целиком от соперника.");
+        }
+
+        InviteCode? invite;
+
         try
         {
-            await _js.InvokeVoidAsync("myakWebrtc.send", json);
+            var json = Encoding.UTF8.GetString(
+                Convert.FromBase64String(trimmed[CodePrefix.Length..]));
+            invite = JsonSerializer.Deserialize<InviteCode>(json, JsonOptions);
         }
-        catch (JSException)
+        catch (Exception exception) when (exception is FormatException or JsonException)
         {
-            // Канал мог закрыться.
+            throw new InvalidOperationException("Код повреждён или обрезан. Попросите соперника отправить его заново.");
         }
+
+        if (invite is null || string.IsNullOrWhiteSpace(invite.Rtc))
+        {
+            throw new InvalidOperationException("В коде нет данных соединения.");
+        }
+
+        if (!string.Equals(invite.Version, _version, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Версии не совпадают: у вас {_version}, у соперника {invite.Version}. " +
+                "Обновите игру и попробуйте снова.");
+        }
+
+        return invite;
     }
 
-    private async Task ClosePeerAsync()
-    {
-        try
-        {
-            await _js.InvokeVoidAsync("myakWebrtc.close");
-        }
-        catch (JSException)
-        {
-            // Браузер уже выгружает страницу.
-        }
-    }
-
-    private async Task HandleSignalAsync(string json)
-    {
-        try
-        {
-            await _js.InvokeVoidAsync("myakWebrtc.handleSignal", json);
-        }
-        catch (JSException)
-        {
-            // Браузер уже выгружает страницу.
-        }
-    }
-
-    private static async Task SendHubSignalAsync(HubConnection connection, string json)
-    {
-        try
-        {
-            await connection.SendAsync("SendSignal", json);
-        }
-        catch (Exception)
-        {
-            // Сервер мог остановиться — игра уже идёт напрямую.
-        }
-    }
-
-    private Task<T> InvokeHubAsync<T>(string method, params object?[] args)
-    {
-        var connection = _connection
-            ?? throw new InvalidOperationException("Соединение с сервером не установлено.");
-
-        return connection.InvokeCoreAsync<T>(method, args);
-    }
-
-    private Uri BuildHubUri()
-    {
-        var configured = _configuration["Server:BaseUrl"];
-
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            var serverBase = new Uri(configured.TrimEnd('/') + "/");
-            return new Uri(serverBase, "hubs/game");
-        }
-
-        return new Uri(new Uri(_navigation.BaseUri), "hubs/game");
-    }
-
-    private string DescribeConnectFailure(Exception? error)
-    {
-        var host = BuildHubUri().Host;
-        var detail = error?.GetBaseException().Message;
-
-        var text = $"Не удалось связаться с сервером сигналинга ({host}). " +
-                   "Проверьте интернет: если включён VPN или блокировщик — выключите и повторите, " +
-                   "если выключен — попробуйте включить. На мобильной сети сервер может быть недоступен " +
-                   "из-за блокировки провайдера.";
-
-        return string.IsNullOrWhiteSpace(detail) ? text : $"{text} Техническая информация: {detail}";
-    }
-
-    private static PlaneKind ParseKind(string? kindName) =>
-        Enum.TryParse<PlaneKind>(kindName, ignoreCase: true, out var kind)
-            ? kind
-            : PlaneKind.Biplane;
+    private static bool SameSettings(RoomSettings left, RoomSettings right) =>
+        left.ScoreToWin == right.ScoreToWin
+        && left.AllowSameKind == right.AllowSameKind
+        && left.AllowEjection == right.AllowEjection;
 
     private static double NowMilliseconds() =>
-        new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+    private static PlaneKind ParseKind(string kindName) =>
+        Enum.TryParse<PlaneKind>(kindName, ignoreCase: true, out var kind)
+            ? kind
+            : throw new InvalidOperationException("Неизвестный класс летательного аппарата.");
+
+    private static string KindName(PlaneKind kind) =>
+        kind == PlaneKind.Biplane ? "biplane" : "pterodactyl";
+
+    /// <summary>Сжатый пакет, которым игроки обмениваются вручную.</summary>
+    private sealed class InviteCode
+    {
+        [JsonPropertyName("v")]
+        public string Version { get; set; } = string.Empty;
+
+        [JsonPropertyName("h")]
+        public string HostKind { get; set; } = "biplane";
+
+        [JsonPropertyName("g")]
+        public string? GuestKind { get; set; }
+
+        [JsonPropertyName("s")]
+        public RoomSettings? Settings { get; set; }
+
+        [JsonPropertyName("rtc")]
+        public string Rtc { get; set; } = string.Empty;
+    }
 }
