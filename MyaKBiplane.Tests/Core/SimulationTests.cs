@@ -596,10 +596,10 @@ public sealed class PilotTests
     }
 
     /// <summary>
-    /// Слишком быстрое падение разбивает лётчика, но не приносит очко сопернику.
+    /// Слишком быстрое падение разбивает лётчика и приносит очко сопернику.
     /// </summary>
     [Fact]
-    public void UnsafeLanding_KillsPilotWithoutScore()
+    public void UnsafeLanding_KillsPilotAndScoresForOpponent()
     {
         var world = new GameWorld(seed: 33);
         world.Reset(PlaneKind.Biplane, PlaneKind.Pterodactyl, secondIsBot: false);
@@ -616,7 +616,7 @@ public sealed class PilotTests
 
         Assert.Equal(PilotState.WaitingRespawn, pilot.State);
         Assert.Equal(0, world.Score(0));
-        Assert.Equal(0, world.Score(1));
+        Assert.Equal(1, world.Score(1));
         Assert.Contains(world.Events, gameEvent => gameEvent.Type == GameEventType.PilotKilled);
     }
 

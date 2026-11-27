@@ -646,7 +646,9 @@ public sealed class GameWorld
 
                 if (impactSpeed > GameBalance.PilotSafeLandingSpeed)
                 {
-                    KillPilot(pilot, attackerSlot: -1, pilot.Position);
+                    // Разбившийся лётчик приносит очко сопернику: у игрока всего две стороны,
+                    // и смерть от собственной ошибки всё равно идёт в счёт противника.
+                    KillPilot(pilot, attackerSlot: OppositeSlot(pilot.Slot), pilot.Position);
                 }
                 else
                 {
@@ -750,7 +752,7 @@ public sealed class GameWorld
     /// Убивает лётчика вне аппарата и запускает возрождение.
     /// </summary>
     /// <param name="pilot">Лётчик.</param>
-    /// <param name="attackerSlot">Слот виновника или -1, если лётчик разбился сам.</param>
+    /// <param name="attackerSlot">Слот виновника или -1, если очко никому не начисляется.</param>
     /// <param name="position">Позиция гибели.</param>
     private void KillPilot(Pilot pilot, int attackerSlot, Vector2 position)
     {
