@@ -14,9 +14,16 @@
     @* Сенсорное управление: видно только на телефоне/в Telegram mobile. *@
     <div class="touch-controls @(_room?.Status == "playing" || _warmupActive ? "touch-controls-active" : string.Empty)"
          aria-hidden="true">
-        @* Стик движения появляется там, куда игрок положил палец. *@
+        @* Птеро: полноценный 2D-стик движения. *@
         <div class="touch-move-zone" data-touch-zone="move">
             <div class="touch-stick touch-stick-move" data-touch-stick="move">
+                <span class="touch-stick-knob"></span>
+            </div>
+        </div>
+
+        @* Биплан: горизонтальный стик-руль с возвратом в центр. *@
+        <div class="touch-steer-zone" data-touch-zone="steer">
+            <div class="touch-stick touch-stick-steer" data-touch-stick="steer">
                 <span class="touch-stick-knob"></span>
             </div>
         </div>
@@ -29,14 +36,22 @@
                     <path d="M2.5 10.5a9.5 9.5 0 0 1 19 0H2.5Z" />
                     <path d="M2.5 10.5 8 16m13.5-5.5L16 16M8 16h8m-4 0v4.5M6 20.5h12" />
                 </svg>
+                <span class="gamepad-key">Y</span>
             </button>
-
-            <button type="button" class="touch-button touch-reload touch-reload-loaded"
-                    data-touch-action="reload" aria-label="Перезарядка">R</button>
 
             <button type="button" class="touch-button touch-fire" data-touch-action="fire"
                     aria-label="Огонь">
-                <span class="touch-fire-label">Огонь</span>
+                <span class="gamepad-key">X</span>
+            </button>
+
+            <button type="button" class="touch-button touch-reload touch-reload-loaded"
+                    data-touch-action="reload" aria-label="Перезарядка">
+                <span class="gamepad-key">R</span>
+            </button>
+
+            <button type="button" class="touch-button touch-gas" data-touch-action="gas"
+                    aria-label="Газ">
+                <span class="gamepad-key">A</span>
             </button>
 
             <button type="button" class="touch-button touch-ability" data-touch-action="ability"
@@ -54,6 +69,7 @@
                         <path d="M3 17h10" />
                     </svg>
                 }
+                <span class="gamepad-key">B</span>
             </button>
         </div>
 

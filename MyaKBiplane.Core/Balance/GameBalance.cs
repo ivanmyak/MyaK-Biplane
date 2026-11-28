@@ -125,7 +125,10 @@ public sealed class GameBalance
     public const float PilotGlideFallSpeed = 205f;
 
     /// <summary>Начальный импульс катапультирования вверх.</summary>
-    public const float PilotEjectImpulse = 240f;
+    public const float PilotEjectImpulse = 280f;
+
+    /// <summary>Рывок вверх в момент раскрытия парашюта.</summary>
+    public const float PilotParachuteOpenImpulse = 90f;
 
     /// <summary>Гравитация бесхозного аппарата, чтобы он мог разбиться.</summary>
     public const float AbandonedGravity = 260f;
@@ -152,7 +155,7 @@ public sealed class GameBalance
 public sealed class BiplaneBalance
 {
     /// <summary>Ускорение при тяге вперёд.</summary>
-    public float Thrust { get; init; } = 420f;
+    public float Thrust { get; init; } = 520f;
 
     /// <summary>Ускорение при обратной тяге.</summary>
     public float ReverseThrust { get; init; } = 260f;
@@ -162,6 +165,15 @@ public sealed class BiplaneBalance
 
     /// <summary>Скорость поворота в радианах в секунду.</summary>
     public float TurnRate { get; init; } = 3.8f;
+
+    /// <summary>Скорость, ниже которой биплан начинает проседать (аналог 230 в BT).</summary>
+    public float StallSpeed { get; init; } = 320f;
+
+    /// <summary>Максимальная просадка при полной потере скорости.</summary>
+    public float MaxStallSink { get; init; } = 260f;
+
+    /// <summary>Дополнительное торможение при наборе высоты.</summary>
+    public float ClimbDrag { get; init; } = 0.35f;
 
     /// <summary>Ускорение свободного падения.</summary>
     public float Gravity { get; init; } = 170f;

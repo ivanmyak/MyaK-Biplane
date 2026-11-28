@@ -420,6 +420,20 @@ html.has-touch .help-note.help-desktop {
     display: none;
 }
 
+.help-gamepad {
+    display: none;
+}
+
+html.has-gamepad .help-gamepad {
+    display: block;
+}
+
+html.has-gamepad .help-desktop,
+html.has-gamepad .help-touch,
+html.has-gamepad .help-note.help-desktop {
+    display: none;
+}
+
 .help-legend .controls-grid {
     margin-top: 0;
 }
@@ -872,8 +886,8 @@ html.has-touch .help-note.help-desktop {
 }
 
 .touch-throw {
-    left: 42%;
-    top: 72%;
+    left: 28%;
+    top: 38%;
     width: calc(var(--touch-stick-size) * 0.82);
     height: calc(var(--touch-stick-size) * 0.82);
     opacity: 0.3;
@@ -1001,6 +1015,43 @@ html.telegram-webapp .menu-shell {
     touch-action: none;
 }
 
+.touch-controls[data-kind="biplane"] .touch-move-zone {
+    display: none;
+}
+
+.touch-steer-zone {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 46%;
+    height: 72%;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.touch-controls:not([data-kind="biplane"]) .touch-steer-zone {
+    display: none;
+}
+
+.touch-stick-steer {
+    left: 50%;
+    bottom: calc(2rem + var(--tg-safe-bottom, 0px));
+    width: calc(var(--touch-stick-size) * 1.15);
+    height: calc(var(--touch-stick-size) * 0.6);
+    border-radius: 3rem;
+    opacity: 0.3;
+}
+
+.touch-stick-steer.is-active {
+    opacity: 0.85;
+}
+
+.touch-stick-steer .touch-stick-knob {
+    width: calc(var(--touch-stick-size) * 0.34);
+    height: calc(var(--touch-stick-size) * 0.34);
+    margin: calc(var(--touch-stick-size) * -0.17) 0 0 calc(var(--touch-stick-size) * -0.17);
+}
+
 .touch-stick {
     position: absolute;
     width: var(--touch-stick-size);
@@ -1081,10 +1132,10 @@ html.telegram-webapp .menu-shell {
     pointer-events: none;
 }
 
-/* Единая кнопка: только цвет меняет действие. */
+/* Крест геймпада: Y — лётчик, X — огонь, A — газ, B — способность. */
 .touch-context {
-    top: calc(var(--touch-size) * 0.5);
-    right: 0;
+    top: 0;
+    right: calc(var(--touch-size) * 1.1);
     background: rgba(74, 222, 128, 0.85);
     color: #052e16;
     box-shadow: 0 0 0.7rem rgba(74, 222, 128, 0.35);
@@ -1116,12 +1167,13 @@ html.telegram-webapp .menu-shell {
 }
 
 .touch-reload {
-    top: calc(var(--touch-size) * 0.7);
-    right: calc(var(--touch-size) * 1.15);
-    width: calc(var(--touch-size) * 0.78);
-    height: calc(var(--touch-size) * 0.78);
+    top: calc(var(--touch-size) * 0.1);
+    right: calc(var(--touch-size) * 2.5);
+    width: calc(var(--touch-size) * 0.62);
+    height: calc(var(--touch-size) * 0.62);
     background: rgba(248, 113, 113, 0.88);
     color: #ffffff;
+    font-size: clamp(0.42rem, 1.4vh, 0.58rem);
 }
 
 .touch-reload.touch-reload-empty {
@@ -1130,22 +1182,31 @@ html.telegram-webapp .menu-shell {
 }
 
 .touch-fire {
-    top: calc(var(--touch-size) * 1.75);
-    right: calc(var(--touch-size) * 1.15);
-    width: calc(var(--touch-size) * 1.25);
-    height: calc(var(--touch-size) * 1.25);
+    top: calc(var(--touch-size) * 1.1);
+    right: calc(var(--touch-size) * 2.2);
     background: rgba(248, 113, 113, 0.78);
     color: #ffffff;
 }
 
-.touch-fire-label {
-    position: relative;
-    z-index: 1;
+.touch-gas {
+    top: calc(var(--touch-size) * 2.2);
+    right: calc(var(--touch-size) * 1.1);
+    background: rgba(250, 204, 21, 0.86);
+    color: #422006;
+}
+
+.gamepad-key {
+    position: absolute;
+    right: 0.22rem;
+    bottom: 0.16rem;
+    font-size: clamp(0.45rem, 1.5vh, 0.6rem);
+    line-height: 1;
+    opacity: 0.82;
     pointer-events: none;
 }
 
 .touch-controls[data-kind="pterodactyl"] .touch-reload,
-.touch-controls[data-kind="pterodactyl"] .touch-fire-label {
+.touch-controls[data-kind="pterodactyl"] .touch-gas {
     display: none;
 }
 
@@ -1182,35 +1243,10 @@ html.telegram-webapp .menu-shell {
 }
 
 .touch-ability {
-    top: calc(var(--touch-size) * 3.2);
-    right: calc(var(--touch-size) * 0.55);
+    top: calc(var(--touch-size) * 1.1);
+    right: 0;
     background: rgba(56, 189, 248, 0.72);
     color: #082f49;
-}
-
-.touch-ability::after {
-    position: absolute;
-    inset: 8%;
-    border-radius: 50%;
-    background: conic-gradient(rgba(2, 6, 23, 0.68) var(--cooldown-deg, 0deg), transparent 0deg);
-    content: "";
-    pointer-events: none;
-}
-
-.touch-ability-label {
-    position: relative;
-    z-index: 1;
-    pointer-events: none;
-}
-
-.touch-button-pause {
-    top: calc(var(--touch-size) * 4.2);
-    right: 0;
-    width: calc(var(--touch-size) * 0.7);
-    height: calc(var(--touch-size) * 0.7);
-    border-radius: 50%;
-    background: rgba(2, 6, 23, 0.55);
-    font-size: clamp(0.45rem, 1.5vh, 0.6rem);
 }
 
 @media (max-width: 720px) {

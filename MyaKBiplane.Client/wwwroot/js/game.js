@@ -184,26 +184,59 @@
         const left = keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0;
         const up = keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0;
         const down = keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0;
+        const pad = window.myakGamepad?.isActive?.() ? window.myakGamepad.read() : null;
+        const axes = pad ? pad.axes : [0, 0, 0, 0];
+        const buttons = pad ? pad.buttons : [];
+        const previous = game.gamepadButtons || [];
+        const padDown = (index) => !!buttons[index] && !previous[index];
+        const padTurn = axes[0] + (buttons[15] ? 1 : 0) - (buttons[14] ? 1 : 0);
+        const padThrust = Math.max(0, -axes[1], buttons[0] ? 1 : 0, buttons[7] ? 1 : 0);
+        const isPtero = isPterodactyl(game);
+        const pteroFire = isPtero && !!buttons[11];
+
+        if (pteroFire && game.state) {
+            const plane = (game.state.planes || []).find(
+                (item) => item.slot === game.state.yourSlot);
+
+            if (plane) {
+                game.touch.aimX = plane.x + axes[2] * 10;
+                game.touch.aimY = plane.y + axes[3] * 10;
+                game.touch.aimActive = true;
+            }
+        } else if (pad && isPtero) {
+            game.touch.aimActive = false;
+        }
+
+        const ownPilot = game.state && (game.state.pilots || []).find(
+            (item) => item.slot === game.state.yourSlot);
+        const pilotInPlane = !ownPilot || ownPilot.state === "inplane";
+        const contextPressed = padDown(3);
         const aim = resolveAim(game);
 
+        game.gamepadPausePressed = padDown(9);
+
         const input = {
-            thrust: clamp((up - down) - touch.moveY, -1, 1),
-            turn: clamp((right - left) + touch.moveX, -1, 1),
-            moveX: clamp((right - left) + touch.moveX, -1, 1),
-            moveY: clamp((down - up) + touch.moveY, -1, 1),
+            thrust: clamp((up - down) + touch.thrust - touch.moveY + padThrust, -1, 1),
+            turn: clamp((right - left) + touch.moveX + padTurn, -1, 1),
+            moveX: clamp((right - left) + touch.moveX + padTurn, -1, 1),
+            moveY: clamp((down - up) + touch.moveY + axes[1], -1, 1),
             aimX: aim.x,
             aimY: aim.y,
-            fire: game.mouse.down || keys.has("KeyF") || touch.fire,
-            ability: keys.has("Space") || game.abilityPressed,
-            reload: game.reloadPressed,
-            eject: game.ejectPressed,
-            parachute: game.parachutePressed
+            fire: game.mouse.down
+                || keys.has("KeyF")
+                || touch.fire
+                || (pteroFire || (!isPtero && (buttons[2] || buttons[7]))),
+            ability: keys.has("Space") || game.abilityPressed || padDown(1) || padDown(5),
+            reload: game.reloadPressed || padDown(4),
+            eject: game.ejectPressed || (contextPressed && pilotInPlane),
+            parachute: game.parachutePressed || (contextPressed && !pilotInPlane)
         };
 
         game.reloadPressed = false;
         game.ejectPressed = false;
         game.parachutePressed = false;
         game.abilityPressed = false;
+        game.gamepadButtons = buttons.slice();
         return input;
     }
 
@@ -218,6 +251,16 @@
         game.lastTimestamp = timestamp;
 
         const input = buildInput(game);
+
+        if (game.gamepadPausePressed && !game.gamepadPauseHandled) {
+            game.gamepadPauseHandled = true;
+            game.dotNetRef.invokeMethodAsync("TogglePause");
+        }
+
+        if (!game.gamepadPausePressed) {
+            game.gamepadPauseHandled = false;
+        }
+
         let stateJson;
 
         try {
@@ -1167,10 +1210,12 @@
         game.touch.aimY = 0;
         game.touch.aimActive = false;
         game.touch.fire = false;
+        game.touch.thrust = 0;
         game.abilityPressed = false;
 
         game.touchUi?.stick?.classList.remove("is-active");
         game.touchUi?.throwStick?.classList.remove("is-active");
+        game.touchUi?.steerStick?.classList.remove("is-active");
         document.querySelectorAll(".touch-stick-knob").forEach((knob) => {
             knob.style.transform = "";
         });
@@ -1201,6 +1246,9 @@
         const throwZone = container.querySelector("[data-touch-zone='throw']");
         const throwStick = throwZone?.querySelector("[data-touch-stick='throw']");
         const throwArrow = throwStick?.querySelector(".throw-arrow");
+        const steerZone = container.querySelector("[data-touch-zone='steer']");
+        const steerStick = steerZone?.querySelector("[data-touch-stick='steer']");
+        const steerKnob = steerStick?.querySelector(".touch-stick-knob");
         const contextButton = container.querySelector("[data-touch-action='context']");
         const reloadButton = container.querySelector("[data-touch-action='reload']");
         const abilityButton = container.querySelector("[data-touch-action='ability']");
@@ -1212,6 +1260,7 @@
             reload: reloadButton,
             ability: abilityButton,
             throwStick,
+            steerStick,
             arrow: throwArrow || null
         };
 
@@ -1306,6 +1355,77 @@
                 zone.removeEventListener("pointerup", onUp);
                 zone.removeEventListener("pointercancel", onCancel);
                 zone.removeEventListener("lostpointercapture", onCancel);
+            });
+        }
+
+        if (steerZone && steerStick) {
+            let pointerId = null;
+            let centerX = 0;
+            let radius = 1;
+
+            const update = (event) => {
+                const rect = steerStick.getBoundingClientRect();
+                radius = Math.max(1, rect.width * 0.4);
+                const dx = clamp(event.clientX - centerX, -radius, radius);
+
+                if (steerKnob) {
+                    steerKnob.style.transform = `translate(${dx}px, 0px)`;
+                }
+
+                game.touch.moveX = Math.abs(dx / radius) > 0.12 ? dx / radius : 0;
+            };
+
+            const reset = () => {
+                pointerId = null;
+                steerStick.classList.remove("is-active");
+
+                if (steerKnob) {
+                    steerKnob.style.transform = "";
+                }
+
+                game.touch.moveX = 0;
+            };
+
+            const onDown = (event) => {
+                if (pointerId !== null) {
+                    return;
+                }
+
+                pointerId = event.pointerId;
+                centerX = event.clientX;
+                const zoneRect = steerZone.getBoundingClientRect();
+                steerStick.style.left = `${centerX - zoneRect.left}px`;
+                steerStick.classList.add("is-active");
+                steerZone.setPointerCapture?.(event.pointerId);
+                update(event);
+                event.preventDefault();
+            };
+
+            const onMove = (event) => {
+                if (event.pointerId === pointerId) {
+                    update(event);
+                    event.preventDefault();
+                }
+            };
+
+            const onUp = (event) => {
+                if (event.pointerId === pointerId) {
+                    reset();
+                }
+            };
+
+            steerZone.addEventListener("pointerdown", onDown);
+            steerZone.addEventListener("pointermove", onMove);
+            steerZone.addEventListener("pointerup", onUp);
+            steerZone.addEventListener("pointercancel", onUp);
+            steerZone.addEventListener("lostpointercapture", onUp);
+
+            cleanups.push(() => {
+                steerZone.removeEventListener("pointerdown", onDown);
+                steerZone.removeEventListener("pointermove", onMove);
+                steerZone.removeEventListener("pointerup", onUp);
+                steerZone.removeEventListener("pointercancel", onUp);
+                steerZone.removeEventListener("lostpointercapture", onUp);
             });
         }
 
@@ -1418,6 +1538,9 @@
                     case "ability":
                         game.abilityPressed = true;
                         break;
+                    case "gas":
+                        game.touch.thrust = 1;
+                        break;
                     case "reload":
                         game.reloadPressed = true;
                         break;
@@ -1461,6 +1584,10 @@
                 if (action === "fire") {
                     game.touch.fire = false;
                     game.touch.aimActive = false;
+                }
+
+                if (action === "gas") {
+                    game.touch.thrust = 0;
                 }
             };
 
@@ -1548,18 +1675,6 @@
             ui.reload.setAttribute(
                 "aria-label",
                 loaded ? `Перезарядка, патронов ${ownPlane.ammo}` : "Магазин пуст");
-        }
-
-        if (ui.ability) {
-            const cooldown = kind === "biplane"
-                ? (ownPlane?.boostCooldown || 0)
-                : (ownPlane?.dashCooldown || 0);
-            const degrees = Math.round(Math.min(1, cooldown / 6) * 360);
-
-            if (game.touchCooldown !== degrees) {
-                ui.ability.style.setProperty("--cooldown-deg", `${degrees}deg`);
-                game.touchCooldown = degrees;
-            }
         }
 
         if (ui.arrow && kind === "pterodactyl" && ownPlane) {
@@ -1726,7 +1841,8 @@
                 aimX: 0,
                 aimY: 0,
                 aimActive: false,
-                fire: false
+                fire: false,
+                thrust: 0
             },
             view: { worldWidth: 1600, worldHeight: 900, scale: 1, offsetX: 0, offsetY: 0 },
             cssWidth: 1,

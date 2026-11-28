@@ -437,9 +437,15 @@ public sealed class GameWorld
 
         var thrust = GameMath.Clamp(input.Thrust, -1f, 1f);
 
+        var speed = plane.Velocity.Length();
+        var pitchFactor = MathF.Abs(MathF.Cos(plane.Rotation));
+
         if (thrust > 0f)
         {
-            var acceleration = balance.Thrust * (isBoosting ? balance.BoostMultiplier : 1f);
+            // Как в BT: тяга максимальна в горизонтальном полёте и почти нулевая в свечке.
+            var acceleration = balance.Thrust
+                * (pitchFactor < 0.15f ? 0.15f : pitchFactor)
+                * (isBoosting ? balance.BoostMultiplier : 1f);
             plane.Velocity += GameMath.Direction(plane.Rotation) * (acceleration * thrust * dt);
         }
         else if (thrust < 0f)
@@ -447,7 +453,21 @@ public sealed class GameWorld
             plane.Velocity += GameMath.Direction(plane.Rotation) * (balance.ReverseThrust * thrust * dt);
         }
 
+        var ascent = MathF.Max(0f, -MathF.Sin(plane.Rotation));
+
+        if (ascent > 0f)
+        {
+            plane.Velocity *= MathF.Max(0f, 1f - (balance.ClimbDrag * ascent * dt));
+        }
+
         plane.Velocity += new Vector2(0f, balance.Gravity) * dt;
+
+        if (speed < balance.StallSpeed)
+        {
+            var stallRatio = 1f - speed / balance.StallSpeed;
+            plane.Velocity += new Vector2(0f, balance.MaxStallSink * stallRatio * dt);
+        }
+
         plane.Velocity *= MathF.Max(0f, 1f - (balance.Drag * dt));
         plane.Velocity = GameMath.ClampLength(
             plane.Velocity,
@@ -607,7 +627,10 @@ public sealed class GameWorld
         pilot.State = PilotState.Falling;
         pilot.PlaneId = 0;
         pilot.Position = plane.Position + new Vector2(0f, -plane.Radius - GameBalance.PilotRadius);
-        pilot.Velocity = (plane.Velocity * 0.2f) + new Vector2(0f, -GameBalance.PilotEjectImpulse);
+        // Как в BT: импульс направлен перпендикулярно носу аппарата.
+        var ejectAngle = plane.Rotation - MathF.PI / 2f;
+        var impulse = GameMath.Direction(ejectAngle) * GameBalance.PilotEjectImpulse;
+        pilot.Velocity = (plane.Velocity * 0.12f) + impulse;
         pilot.Facing = plane.Velocity.X >= 0f ? 1f : -1f;
         _events.Add(new GameEvent(GameEventType.Eject, pilot.Position, 0f, pilot.Slot));
     }
@@ -623,9 +646,17 @@ public sealed class GameWorld
         {
             if (input.Parachute && !pilot.WasParachutePressed && !pilot.IsParachuteBroken)
             {
-                pilot.State = pilot.State == PilotState.Parachuting
-                    ? PilotState.Falling
-                    : PilotState.Parachuting;
+                var opening = pilot.State != PilotState.Parachuting;
+
+                pilot.State = opening
+                    ? PilotState.Parachuting
+                    : PilotState.Falling;
+
+                if (opening)
+                {
+                    pilot.Velocity -= new Vector2(0f, GameBalance.PilotParachuteOpenImpulse);
+                }
+
                 _events.Add(new GameEvent(
                     pilot.State == PilotState.Parachuting
                         ? GameEventType.ParachuteOpened

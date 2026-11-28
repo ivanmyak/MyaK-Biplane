@@ -166,7 +166,7 @@ public sealed class BiplanePhysicsTests
     {
         var balance = new GameBalance
         {
-            Biplane = new BiplaneBalance { Gravity = 0f }
+            Biplane = new BiplaneBalance { Gravity = 0f, MaxStallSink = 0f, ClimbDrag = 0f }
         };
 
         var world = new GameWorld(balance, seed: 1);
@@ -390,7 +390,7 @@ public sealed class CombatTests
     {
         var balance = new GameBalance
         {
-            Biplane = new BiplaneBalance { Gravity = 0f }
+            Biplane = new BiplaneBalance { Gravity = 0f, MaxStallSink = 0f, ClimbDrag = 0f }
         };
         var world = new GameWorld(balance, seed: 2);
         world.Reset(PlaneKind.Pterodactyl);
@@ -426,7 +426,7 @@ public sealed class CombatTests
     {
         var balance = new GameBalance
         {
-            Biplane = new BiplaneBalance { Gravity = 0f }
+            Biplane = new BiplaneBalance { Gravity = 0f, MaxStallSink = 0f, ClimbDrag = 0f }
         };
 
         var world = new GameWorld(balance, seed: 1);
@@ -448,7 +448,7 @@ public sealed class ReloadTests
     {
         var balance = new GameBalance
         {
-            Biplane = new BiplaneBalance { Gravity = 0f }
+            Biplane = new BiplaneBalance { Gravity = 0f, MaxStallSink = 0f, ClimbDrag = 0f }
         };
         var world = new GameWorld(balance, seed: 23);
         world.Reset(PlaneKind.Biplane);
@@ -486,7 +486,7 @@ public sealed class ReloadTests
     {
         var balance = new GameBalance
         {
-            Biplane = new BiplaneBalance { Gravity = 0f }
+            Biplane = new BiplaneBalance { Gravity = 0f, MaxStallSink = 0f, ClimbDrag = 0f }
         };
         var world = new GameWorld(balance, seed: 24);
         world.Reset(PlaneKind.Biplane);
