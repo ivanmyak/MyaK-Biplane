@@ -9,7 +9,7 @@
 <div class="game-shell">
     <canvas id="gameCanvas" class="game-canvas"></canvas>
 
-    <a class="back-link" href="@Navigation.BaseUri">← В меню</a>
+    <button type="button" class="back-link" @onclick="TogglePause">Пауза</button>
 
     @* Сенсорное управление: видно только на телефоне/в Telegram mobile. *@
     <div class="touch-controls @(_room?.Status == "playing" || _warmupActive ? "touch-controls-active" : string.Empty)"
@@ -24,7 +24,12 @@
         <div class="touch-cluster">
             <button type="button" class="touch-button touch-context touch-action-eject"
                     data-touch-action="context" data-touch-state="eject"
-                    aria-label="Покинуть аппарат">E</button>
+                    aria-label="Покинуть аппарат">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2.5 10.5a9.5 9.5 0 0 1 19 0H2.5Z" />
+                    <path d="M2.5 10.5 8 16m13.5-5.5L16 16M8 16h8m-4 0v4.5M6 20.5h12" />
+                </svg>
+            </button>
 
             <button type="button" class="touch-button touch-reload touch-reload-loaded"
                     data-touch-action="reload" aria-label="Перезарядка">R</button>
@@ -32,22 +37,37 @@
             <button type="button" class="touch-button touch-fire" data-touch-action="fire"
                     aria-label="Огонь">
                 <span class="touch-fire-label">Огонь</span>
-                <span class="throw-arrow" aria-hidden="true">
-                    <span class="throw-arrow-head"></span>
-                </span>
             </button>
 
             <button type="button" class="touch-button touch-ability" data-touch-action="ability"
                     aria-label="Способность">
-                <span class="touch-ability-label">@(_kind == PlaneKind.Biplane ? "Ускор." : "Рывок")</span>
+                @if (_kind == PlaneKind.Biplane)
+                {
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M8 2 3 12h5l-1 10 9-13h-5l3-7H8Z" />
+                    </svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M2 8h11l-3-3 2-2 6 6-6 6-2-2 3-3H2Z" />
+                        <path d="M3 17h10" />
+                    </svg>
+                }
             </button>
+        </div>
 
-            <button type="button" class="touch-button touch-button-pause" data-touch-action="pause"
-                    aria-label="Пауза">II</button>
+        @* Полупрозрачная зона броска: стрелка растёт от точки нажатия к пальцу. *@
+        <div class="touch-throw-zone" data-touch-zone="throw" aria-hidden="true">
+            <div class="touch-stick touch-throw" data-touch-stick="throw">
+                <span class="throw-arrow">
+                    <span class="throw-arrow-head"></span>
+                </span>
+            </div>
         </div>
     </div>
 
-    @if (_room is not null && (_room.Status != "waiting" || _warmupActive))
+    @if (_showDevInfo && _room is not null && (_room.Status != "waiting" || _warmupActive))
     {
         <div class="game-meta">
             <span>@(Mode == "bot" ? "Игра с ботом" : _warmupActive ? "Сетевая игра · тренировка" : ModeLabel)</span>
@@ -362,6 +382,7 @@
     private int _warmupYourScore;
     private int _warmupOpponentScore;
     private bool _started;
+    private bool _showDevInfo;
     private bool _busy;
     private int _winnerSlot = -1;
     private int _yourScore;
@@ -476,6 +497,7 @@
         _started = true;
         _dotNetRef = DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("myakBiplane.start", _dotNetRef, CanvasId);
+        _showDevInfo = await ReadDevInfoSettingAsync();
         await SetTelegramModeAsync(true);
         await SetScrollLockedAsync(true);
         var joinCode = await ReadJoinCodeAsync();
@@ -759,6 +781,19 @@
         catch (Exception)
         {
             // Буфер обмена может быть недоступен.
+        }
+    }
+
+    private async Task<bool> ReadDevInfoSettingAsync()
+    {
+        try
+        {
+            var value = await JS.InvokeAsync<string?>("localStorage.getItem", "myakShowDevInfo");
+            return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (JSException)
+        {
+            return false;
         }
     }
 

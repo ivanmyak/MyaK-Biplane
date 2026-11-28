@@ -43,6 +43,9 @@
                 <button class="button button-ghost" @onclick="ShowHelp">
                     Помощь
                 </button>
+                <button class="button button-ghost" @onclick="ShowSettings">
+                    Настройки
+                </button>
             </div>
         }
         else if (_view == "bot")
@@ -277,6 +280,11 @@
     {
         _view = "help";
         _error = null;
+    }
+
+    private void ShowSettings()
+    {
+        Navigation.NavigateTo($"{Navigation.BaseUri}settings");
     }
 
     private void StartBot()

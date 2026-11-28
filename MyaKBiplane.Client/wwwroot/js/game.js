@@ -2,7 +2,7 @@
     "use strict";
 
     const games = new Map();
-    const pilotRadius = 7.65;
+    const pilotRadius = 9.5;
 
     // На тач-устройствах показываем экранные стики и кнопки.
     if (window.matchMedia?.("(pointer: coarse)").matches) {
@@ -87,14 +87,35 @@
     function updateView(game, state) {
         const worldWidth = state.worldWidth || 1600;
         const worldHeight = state.worldHeight || 900;
-        const scale = Math.min(game.cssWidth / worldWidth, game.cssHeight / worldHeight);
+        const coarse = document.documentElement.classList.contains("has-touch")
+            || document.documentElement.classList.contains("telegram-mobile");
+        const scale = Math.min(game.cssWidth / worldWidth, game.cssHeight / worldHeight)
+            * (coarse ? 1.18 : 1);
+
+        let offsetX = (game.cssWidth - worldWidth * scale) / 2;
+        let offsetY = (game.cssHeight - worldHeight * scale) / 2;
+
+        if (coarse) {
+            // На узком ландшафте держим землю в кадре и приближаем лётчика.
+            const groundY = state.groundY ?? game.state?.groundY ?? (worldHeight - 40);
+            offsetY = game.cssHeight - 26 - groundY * scale;
+
+            if (worldWidth * scale > game.cssWidth) {
+                const own = game.state && findOwnEntity(game.state);
+                const focusX = own ? own.x : worldWidth / 2;
+                offsetX = clamp(
+                    game.cssWidth / 2 - focusX * scale,
+                    game.cssWidth - worldWidth * scale,
+                    0);
+            }
+        }
 
         game.view = {
             worldWidth,
             worldHeight,
             scale,
-            offsetX: (game.cssWidth - worldWidth * scale) / 2,
-            offsetY: (game.cssHeight - worldHeight * scale) / 2
+            offsetX,
+            offsetY
         };
     }
 
@@ -298,7 +319,7 @@
         }
 
         for (const pilot of state.pilots || []) {
-            drawPilot(ctx, pilot, state);
+            drawPilot(ctx, game, pilot, state);
         }
 
         drawParticles(ctx, game.particles);
@@ -763,6 +784,47 @@
         ctx.fillStyle = barColor;
         ctx.fillRect(plane.x - width / 2 + 1, plane.y - 47, (width - 2) * healthRatio, 5);
 
+        if (plane.kind === "biplane" && plane.reload > 0 && plane.reloadDuration > 0) {
+            const reloadWidth = 62;
+            const progress = Math.max(0, Math.min(1, 1 - plane.reload / plane.reloadDuration));
+
+            ctx.fillStyle = "rgba(2, 6, 23, 0.72)";
+            pathRoundRect(ctx, plane.x - reloadWidth / 2, plane.y - 59, reloadWidth, 5, 2);
+            ctx.fill();
+            ctx.fillStyle = "#facc15";
+            pathRoundRect(
+                ctx,
+                plane.x - reloadWidth / 2 + 1,
+                plane.y - 58,
+                (reloadWidth - 2) * progress,
+                3,
+                1);
+            ctx.fill();
+        }
+
+        const abilityCooldown = plane.kind === "biplane"
+            ? (plane.boostCooldown || 0)
+            : (plane.dashCooldown || 0);
+        const abilityDuration = plane.abilityCooldownDuration || 1;
+
+        if (abilityCooldown > 0) {
+            const abilityWidth = 54;
+            const progress = Math.max(0, Math.min(1, 1 - abilityCooldown / abilityDuration));
+
+            ctx.fillStyle = "rgba(2, 6, 23, 0.72)";
+            pathRoundRect(ctx, plane.x - abilityWidth / 2, plane.y + 52, abilityWidth, 5, 2);
+            ctx.fill();
+            ctx.fillStyle = "#facc15";
+            pathRoundRect(
+                ctx,
+                plane.x - abilityWidth / 2 + 1,
+                plane.y + 53,
+                (abilityWidth - 2) * progress,
+                3,
+                1);
+            ctx.fill();
+        }
+
         ctx.font = "600 13px 'Segoe UI', sans-serif";
         ctx.textAlign = "center";
         ctx.lineWidth = 3;
@@ -807,24 +869,6 @@
         const startX = plane.x - ((total - 1) * gap) / 2;
         const y = plane.y - 64;
 
-        if (plane.reload > 0 && plane.reloadDuration > 0) {
-            const width = 58;
-            const progress = Math.max(0, Math.min(1, 1 - (plane.reload / plane.reloadDuration)));
-
-            ctx.fillStyle = "rgba(2, 6, 23, 0.7)";
-            pathRoundRect(ctx, plane.x - width / 2, y - 7, width, 8, 4);
-            ctx.fill();
-            ctx.fillStyle = "#facc15";
-            pathRoundRect(ctx, plane.x - width / 2 + 1, y - 6, (width - 2) * progress, 6, 3);
-            ctx.fill();
-
-            ctx.fillStyle = "rgba(250, 204, 21, 0.9)";
-            ctx.font = "600 9px 'Segoe UI', sans-serif";
-            ctx.textAlign = "center";
-            ctx.fillText("ПЕРЕЗАРЯДКА", plane.x, y - 11);
-            return;
-        }
-
         for (let i = 0; i < total; i += 1) {
             ctx.beginPath();
             ctx.arc(startX + i * gap, y, pipRadius, 0, Math.PI * 2);
@@ -833,7 +877,7 @@
         }
     }
 
-    function drawPilot(ctx, pilot, state) {
+    function drawPilot(ctx, game, pilot, state) {
         if (pilot.state === "inplane" || pilot.state === "waiting") {
             return;
         }
@@ -895,6 +939,12 @@
         ctx.translate(x, y);
         ctx.scale(facing, 1);
 
+        const halo = Math.max(pilotRadius * 1.6, 13 / game.view.scale);
+        ctx.fillStyle = "rgba(248, 250, 252, 0.16)";
+        ctx.beginPath();
+        ctx.arc(0, -pilotRadius * 0.2, halo, 0, Math.PI * 2);
+        ctx.fill();
+
         ctx.fillStyle = "#f8fafc";
         ctx.beginPath();
         ctx.arc(0, -pilotRadius * 0.9, pilotRadius * 0.55, 0, Math.PI * 2);
@@ -936,87 +986,7 @@
 
         ctx.save();
 
-        const player = (state.planes || []).find((plane) => plane.slot === yourSlot && !plane.abandoned && plane.alive);
-
-        if (player) {
-            drawAbilityHud(ctx, game, player);
-        } else {
-            drawPilotHud(ctx, game, state);
-        }
-
         ctx.restore();
-    }
-
-    function drawAbilityHud(ctx, game, player) {
-        const x = game.cssWidth - 230;
-        const y = game.cssHeight - 86;
-        const width = 210;
-        const height = 62;
-
-        ctx.fillStyle = "rgba(2, 6, 23, 0.62)";
-        pathRoundRect(ctx, x, y, width, height, 12);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        ctx.textAlign = "left";
-        ctx.font = "600 12px 'Segoe UI', sans-serif";
-
-        if (player.kind === "pterodactyl") {
-            ctx.fillStyle = "#94a3b8";
-            ctx.fillText("ЗАРЯД КОПЬЯ", x + 14, y + 19);
-
-            const charge = Math.max(0, Math.min(1, player.charge || 0));
-            ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
-            ctx.fillRect(x + 14, y + 27, width - 28, 8);
-            ctx.fillStyle = "#facc15";
-            ctx.fillRect(x + 14, y + 27, (width - 28) * charge, 8);
-
-            ctx.fillStyle = player.reload > 0 ? "#fca5a5" : "#94a3b8";
-            ctx.fillText(
-                player.reload > 0 ? `Перезарядка: ${player.reload.toFixed(1)} с` : "Готов к броску",
-                x + 14,
-                y + 51);
-            return;
-        }
-
-        ctx.fillStyle = "#94a3b8";
-        ctx.fillText("МАГАЗИН", x + 14, y + 19);
-
-        const ammo = Math.max(0, player.ammo || 0);
-        const magazine = Math.max(1, player.magazine || 1);
-
-        for (let i = 0; i < magazine; i += 1) {
-            ctx.beginPath();
-            ctx.arc(x + 20 + i * 16, y + 31, 5, 0, Math.PI * 2);
-            ctx.fillStyle = i < ammo ? "#e2e8f0" : "rgba(148, 163, 184, 0.25)";
-            ctx.fill();
-        }
-
-        if (player.reload > 0 && player.reloadDuration > 0) {
-            const progress = Math.max(0, Math.min(1, 1 - (player.reload / player.reloadDuration)));
-            ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
-            ctx.fillRect(x + 14, y + 42, width - 28, 8);
-            ctx.fillStyle = "#facc15";
-            ctx.fillRect(x + 14, y + 42, (width - 28) * progress, 8);
-
-            ctx.fillStyle = "#fca5a5";
-            ctx.fillText("Перезарядка…", x + 14, y + 58);
-        } else {
-            const boostReady = player.boostCooldown <= 0;
-            const boostActive = player.boost > 0;
-            const boostCooldown = Math.max(0, player.boostCooldown || 0);
-            ctx.fillStyle = boostActive ? "#22d3ee" : boostReady ? "#4ade80" : "#64748b";
-            ctx.fillText(
-                boostActive
-                    ? `Ускорение: ${player.boost.toFixed(1)} с`
-                    : boostReady
-                        ? "Ускорение готово · Пробел"
-                        : `Ускорение через ${Math.ceil(boostCooldown)} с`,
-                x + 14,
-                y + 53);
-        }
     }
 
     function drawPilotHud(ctx, game, state) {
@@ -1200,6 +1170,7 @@
         game.abilityPressed = false;
 
         game.touchUi?.stick?.classList.remove("is-active");
+        game.touchUi?.throwStick?.classList.remove("is-active");
         document.querySelectorAll(".touch-stick-knob").forEach((knob) => {
             knob.style.transform = "";
         });
@@ -1227,9 +1198,11 @@
         const zone = container.querySelector("[data-touch-zone='move']");
         const stick = zone?.querySelector("[data-touch-stick='move']");
         const knob = stick?.querySelector(".touch-stick-knob");
+        const throwZone = container.querySelector("[data-touch-zone='throw']");
+        const throwStick = throwZone?.querySelector("[data-touch-stick='throw']");
+        const throwArrow = throwStick?.querySelector(".throw-arrow");
         const contextButton = container.querySelector("[data-touch-action='context']");
         const reloadButton = container.querySelector("[data-touch-action='reload']");
-        const fireButton = container.querySelector("[data-touch-action='fire']");
         const abilityButton = container.querySelector("[data-touch-action='ability']");
 
         game.touchUi = {
@@ -1238,8 +1211,8 @@
             context: contextButton,
             reload: reloadButton,
             ability: abilityButton,
-            arrow: fireButton?.querySelector(".throw-arrow") || null,
-            abilityLabel: abilityButton?.querySelector(".touch-ability-label") || null
+            throwStick,
+            arrow: throwArrow || null
         };
 
         if (zone && stick) {
@@ -1336,8 +1309,12 @@
             });
         }
 
-        const updateThrowAim = (event, button) => {
-            const rect = button.getBoundingClientRect();
+        const updateThrowAim = (event) => {
+            if (!throwStick) {
+                return;
+            }
+
+            const rect = throwStick.getBoundingClientRect();
             const dx = event.clientX - (rect.left + rect.width / 2);
             const dy = event.clientY - (rect.top + rect.height / 2);
 
@@ -1358,6 +1335,63 @@
             game.touch.aimActive = true;
         };
 
+        if (throwZone && throwStick) {
+            let pointerId = null;
+
+            const reset = () => {
+                pointerId = null;
+                throwStick.classList.remove("is-active");
+                game.touch.fire = false;
+                game.touch.aimActive = false;
+            };
+
+            const onDown = (event) => {
+                if (pointerId !== null) {
+                    return;
+                }
+
+                pointerId = event.pointerId;
+                const zoneRect = throwZone.getBoundingClientRect();
+                throwStick.style.left = `${event.clientX - zoneRect.left}px`;
+                throwStick.style.top = `${event.clientY - zoneRect.top}px`;
+                throwStick.classList.add("is-active");
+                throwZone.setPointerCapture?.(event.pointerId);
+                game.touch.fire = true;
+                updateThrowAim(event);
+                window.myakTelegram?.haptic?.("selectionChanged");
+                event.preventDefault();
+            };
+
+            const onMove = (event) => {
+                if (event.pointerId !== pointerId) {
+                    return;
+                }
+
+                updateThrowAim(event);
+                event.preventDefault();
+            };
+
+            const onUp = (event) => {
+                if (event.pointerId === pointerId) {
+                    reset();
+                }
+            };
+
+            throwZone.addEventListener("pointerdown", onDown);
+            throwZone.addEventListener("pointermove", onMove);
+            throwZone.addEventListener("pointerup", onUp);
+            throwZone.addEventListener("pointercancel", onUp);
+            throwZone.addEventListener("lostpointercapture", onUp);
+
+            cleanups.push(() => {
+                throwZone.removeEventListener("pointerdown", onDown);
+                throwZone.removeEventListener("pointermove", onMove);
+                throwZone.removeEventListener("pointerup", onUp);
+                throwZone.removeEventListener("pointercancel", onUp);
+                throwZone.removeEventListener("lostpointercapture", onUp);
+            });
+        }
+
         container.querySelectorAll("[data-touch-action]").forEach((button) => {
             const action = button.dataset.touchAction;
             let pointerId = null;
@@ -1377,7 +1411,7 @@
                         game.touch.fire = true;
 
                         if (isPterodactyl(game)) {
-                            updateThrowAim(event, button);
+                            updateThrowAim(event);
                         }
 
                         break;
@@ -1412,7 +1446,7 @@
                 }
 
                 if (action === "fire" && isPterodactyl(game)) {
-                    updateThrowAim(event, button);
+                    updateThrowAim(event);
                     event.preventDefault();
                 }
             };
@@ -1467,14 +1501,6 @@
 
         if (ui.container.dataset.kind !== kind) {
             ui.container.dataset.kind = kind;
-        }
-
-        if (ui.abilityLabel) {
-            const label = kind === "biplane" ? "Ускор." : "Рывок";
-
-            if (ui.abilityLabel.textContent !== label) {
-                ui.abilityLabel.textContent = label;
-            }
         }
 
         let mode = "eject";
