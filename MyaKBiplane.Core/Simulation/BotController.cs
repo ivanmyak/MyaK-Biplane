@@ -84,9 +84,29 @@ public sealed class BotController
         var targetVelocity = targetPlane?.Velocity ?? targetPilot.Velocity;
         var canShoot = targetPlane is null || !targetPlane.IsProtected;
 
+        var bulletThreat = false;
+
+        foreach (var projectile in world.Projectiles)
+        {
+            if (projectile.OwnerSlot == 1)
+            {
+                continue;
+            }
+
+            var dx = projectile.Position.X - bot.Position.X;
+            var dy = projectile.Position.Y - bot.Position.Y;
+
+            if (dx * dx + dy * dy < 90f * 90f)
+            {
+                bulletThreat = true;
+                break;
+            }
+        }
+
         var shouldEject = !botPilot.WasEjectPressed
             && !bot.IsProtected
-            && (bot.Health < 30f
+            && (bulletThreat
+                || bot.Health < 30f
                 || (bot.Health < 60f
                     && bot.Position.Y > GameBalance.GroundY - 150f
                     && bot.Velocity.Y > 80f));
