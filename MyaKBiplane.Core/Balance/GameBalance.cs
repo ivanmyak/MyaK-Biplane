@@ -152,22 +152,22 @@ public sealed class GameBalance
 public sealed class BiplaneBalance
 {
     /// <summary>Ускорение при тяге вперёд.</summary>
-    public float Thrust { get; init; } = 560f;
+    public float Thrust { get; init; } = 420f;
 
     /// <summary>Ускорение при обратной тяге.</summary>
-    public float ReverseThrust { get; init; } = 220f;
+    public float ReverseThrust { get; init; } = 260f;
 
     /// <summary>Максимальная скорость без учёта ускорения.</summary>
-    public float MaxSpeed { get; init; } = 540f;
+    public float MaxSpeed { get; init; } = 430f;
 
     /// <summary>Скорость поворота в радианах в секунду.</summary>
-    public float TurnRate { get; init; } = 3f;
+    public float TurnRate { get; init; } = 3.8f;
 
     /// <summary>Ускорение свободного падения.</summary>
     public float Gravity { get; init; } = 170f;
 
     /// <summary>Коэффициент сопротивления воздуха в секунду.</summary>
-    public float Drag { get; init; } = 0.25f;
+    public float Drag { get; init; } = 0.35f;
 
     /// <summary>Интервал между выстрелами в секундах.</summary>
     public float FireInterval { get; init; } = 1f / 1.5f;

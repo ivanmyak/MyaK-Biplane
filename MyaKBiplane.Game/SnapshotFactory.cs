@@ -44,6 +44,9 @@ public static class SnapshotFactory
                 Boost = plane.BoostTimeRemaining,
                 BoostCooldown = plane.BoostCooldownRemaining,
                 DashCooldown = plane.DashCooldownRemaining,
+                AbilityCooldownDuration = plane.Kind == PlaneKind.Biplane
+                    ? world.Balance.Biplane.BoostDuration + world.Balance.Biplane.BoostCooldown
+                    : world.Balance.Pterodactyl.DashCooldown,
                 Charge = plane.Charge,
                 Reload = plane.ReloadRemaining,
                 ReloadDuration = plane.Kind == PlaneKind.Biplane

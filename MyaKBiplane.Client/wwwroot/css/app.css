@@ -404,6 +404,22 @@ html.telegram-webapp .game-shell {
     text-align: left;
 }
 
+.help-touch {
+    display: none;
+}
+
+html.has-touch .help-desktop {
+    display: none;
+}
+
+html.has-touch .help-touch {
+    display: block;
+}
+
+html.has-touch .help-note.help-desktop {
+    display: none;
+}
+
 .help-legend .controls-grid {
     margin-top: 0;
 }
@@ -836,6 +852,42 @@ html.telegram-webapp .game-shell {
     font-size: 0.8rem;
 }
 
+.touch-throw-zone {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 42%;
+    height: 68%;
+    pointer-events: none;
+}
+
+.touch-controls[data-kind="pterodactyl"] .touch-throw-zone {
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.touch-controls:not([data-kind="pterodactyl"]) .touch-throw-zone,
+.touch-controls[data-kind="pterodactyl"] .touch-fire {
+    display: none;
+}
+
+.touch-throw {
+    left: 42%;
+    top: 72%;
+    width: calc(var(--touch-stick-size) * 0.82);
+    height: calc(var(--touch-stick-size) * 0.82);
+    opacity: 0.3;
+}
+
+.touch-throw.is-active {
+    opacity: 0.8;
+}
+
+.settings-row {
+    margin-top: 1.5rem;
+    font-size: 0.95rem;
+}
+
 .score-line {
     display: flex;
     align-items: baseline;
@@ -1018,9 +1070,20 @@ html.telegram-webapp .menu-shell {
     transform: scale(0.94);
 }
 
+.touch-button svg {
+    width: 58%;
+    height: 58%;
+    fill: currentColor;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
 /* Единая кнопка: только цвет меняет действие. */
 .touch-context {
-    top: 0;
+    top: calc(var(--touch-size) * 0.5);
     right: 0;
     background: rgba(74, 222, 128, 0.85);
     color: #052e16;

@@ -49,13 +49,16 @@ public sealed class BotController
     public PlayerInput Update(GameWorld world, float deltaSeconds)
     {
         var bot = world.ActivePlane(1);
+        var botPilot = world.Pilot(1);
         var targetPlane = world.ActivePlane(0);
         var targetPilot = world.Pilot(0);
 
         if (bot is null || !bot.IsAlive || bot.IsEntering || world.Status == MatchStatus.Finished)
         {
             _chargeHeld = false;
-            return default;
+            return botPilot.State is (PilotState.Falling or PilotState.Parachuting or PilotState.OnGround)
+                ? UpdateBotPilot(world, botPilot, targetPlane, targetPilot)
+                : default;
         }
 
         var pilotIsTarget = targetPlane is null
@@ -81,15 +84,87 @@ public sealed class BotController
         var targetVelocity = targetPlane?.Velocity ?? targetPilot.Velocity;
         var canShoot = targetPlane is null || !targetPlane.IsProtected;
 
+        var shouldEject = !botPilot.WasEjectPressed
+            && !bot.IsProtected
+            && (bot.Health < 30f
+                || (bot.Health < 60f
+                    && bot.Position.Y > GameBalance.GroundY - 150f
+                    && bot.Velocity.Y > 80f));
+
         _cachedInput = bot.Kind == PlaneKind.Biplane
-            ? UpdateBiplane(bot, targetPosition, targetVelocity, canShoot)
-            : UpdatePterodactyl(bot, targetPosition, targetVelocity, canShoot);
+            ? UpdateBiplane(bot, botPilot, shouldEject, targetPosition, targetVelocity, canShoot)
+            : UpdatePterodactyl(bot, botPilot, shouldEject, targetPosition, targetVelocity, canShoot);
 
         return _cachedInput;
     }
 
+    /// <summary>
+    /// Управляет ботом, когда тот покинул аппарат: купол, возврат в аппарат или бег к башне.
+    /// </summary>
+    private static PlayerInput UpdateBotPilot(
+        GameWorld world,
+        Pilot botPilot,
+        Plane? targetPlane,
+        Pilot targetPilot)
+    {
+        Plane? ownPlane = null;
+        var nearestDistance = float.MaxValue;
+
+        foreach (var plane in world.Planes)
+        {
+            if (plane.Slot != 1 || !plane.IsAlive || !plane.IsAbandoned)
+            {
+                continue;
+            }
+
+            var distance = Vector2.Distance(botPilot.Position, plane.Position);
+
+            if (distance < nearestDistance)
+            {
+                ownPlane = plane;
+                nearestDistance = distance;
+            }
+        }
+
+        var canReenter = ownPlane is not null
+            && nearestDistance < GameBalance.PilotReenterRadius
+            && ownPlane.Health > 35f
+            && !botPilot.WasEjectPressed;
+
+        var openParachute = botPilot.State == PilotState.Falling
+            && !botPilot.IsParachuteBroken
+            && botPilot.Position.Y < GameBalance.GroundY - 180f
+            && !botPilot.WasParachutePressed;
+
+        float moveX;
+
+        if (ownPlane is not null && nearestDistance < 260f && ownPlane.Health > 35f)
+        {
+            moveX = MathF.Sign(ownPlane.Position.X - botPilot.Position.X);
+        }
+        else if (botPilot.State == PilotState.OnGround)
+        {
+            moveX = MathF.Sign(GameBalance.TowerX - botPilot.Position.X);
+        }
+        else
+        {
+            moveX = 0f;
+        }
+
+        return new PlayerInput
+        {
+            MoveX = moveX,
+            Eject = canReenter,
+            Parachute = openParachute,
+            AimX = targetPlane?.Position.X ?? targetPilot.Position.X,
+            AimY = targetPlane?.Position.Y ?? targetPilot.Position.Y
+        };
+    }
+
     private PlayerInput UpdateBiplane(
         Plane bot,
+        Pilot botPilot,
+        bool shouldEject,
         Vector2 targetPosition,
         Vector2 targetVelocity,
         bool canShoot)
@@ -124,6 +199,7 @@ public sealed class BotController
             Fire = fire,
             Reload = reload,
             Ability = useBoost,
+            Eject = shouldEject,
             AimX = predicted.X,
             AimY = predicted.Y
         };
@@ -131,6 +207,8 @@ public sealed class BotController
 
     private PlayerInput UpdatePterodactyl(
         Plane bot,
+        Pilot botPilot,
+        bool shouldEject,
         Vector2 targetPosition,
         Vector2 targetVelocity,
         bool canShoot)
@@ -194,7 +272,8 @@ public sealed class BotController
             AimX = aim.X,
             AimY = aim.Y,
             Fire = fire,
-            Ability = dash
+            Ability = dash,
+            Eject = shouldEject
         };
     }
 

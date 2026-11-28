@@ -1,0 +1,83 @@
+@page "/settings"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+
+<PageTitle>Настройки · @GameInfo.Title</PageTitle>
+
+<main class="menu-shell">
+    <section class="menu-card">
+        <div class="menu-head">
+            <p class="eyebrow">Игра</p>
+        </div>
+        <h1>Настройки</h1>
+        <p class="subtitle">
+            Пока только отображение служебной информации во время боя.
+        </p>
+
+        <label class="check-row settings-row">
+            <input type="checkbox" checked="@_showDevInfo" @onchange="OnDevInfoChanged" />
+            <span>Показывать dev-информацию</span>
+        </label>
+        <p class="step-hint">
+            В бою появится блок с режимом матча, кодом, правилами и пингом.
+        </p>
+
+        <div class="menu-actions">
+            <button class="button button-primary" @onclick="BackToMenu">Назад</button>
+        </div>
+
+        <p class="version-badge">MyaK Biplane · v@(Version)</p>
+    </section>
+</main>
+
+@code {
+    private const string StorageKey = "myakShowDevInfo";
+
+    private bool _showDevInfo;
+
+    private string Version => Configuration["App:Version"] ?? "0.0.0";
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var value = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+            _showDevInfo = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+            StateHasChanged();
+        }
+        catch (JSException)
+        {
+            // Хранилище может быть недоступно — оставляем значение по умолчанию.
+        }
+    }
+
+    private async Task OnDevInfoChanged(ChangeEventArgs args)
+    {
+        _showDevInfo = args.Value is bool value && value;
+
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "localStorage.setItem",
+                StorageKey,
+                _showDevInfo ? "true" : "false");
+        }
+        catch (JSException)
+        {
+            // Настройка просто не сохранится между сессиями.
+        }
+    }
+
+    private void BackToMenu() => Navigation.NavigateTo(Navigation.BaseUri);
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

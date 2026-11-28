@@ -132,6 +132,9 @@ public sealed class SnapshotPlane
     /// <summary>Размер магазина биплана.</summary>
     public int Magazine { get; init; }
 
+    /// <summary>Полная длительность перезарядки способности для полосы.</summary>
+    public float AbilityCooldownDuration { get; init; }
+
     /// <summary>Оставшееся время неуязвимости после спавна.</summary>
     public float Protection { get; init; }
 
