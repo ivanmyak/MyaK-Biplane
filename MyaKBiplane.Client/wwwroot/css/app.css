@@ -420,6 +420,20 @@ html.has-touch .help-note.help-desktop {
     display: none;
 }
 
+.help-gamepad {
+    display: none;
+}
+
+html.has-gamepad .help-gamepad {
+    display: block;
+}
+
+html.has-gamepad .help-desktop,
+html.has-gamepad .help-touch,
+html.has-gamepad .help-note.help-desktop {
+    display: none;
+}
+
 .help-legend .controls-grid {
     margin-top: 0;
 }

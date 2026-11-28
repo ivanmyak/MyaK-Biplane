@@ -184,26 +184,59 @@
         const left = keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0;
         const up = keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0;
         const down = keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0;
+        const pad = window.myakGamepad?.isActive?.() ? window.myakGamepad.read() : null;
+        const axes = pad ? pad.axes : [0, 0, 0, 0];
+        const buttons = pad ? pad.buttons : [];
+        const previous = game.gamepadButtons || [];
+        const padDown = (index) => !!buttons[index] && !previous[index];
+        const padTurn = axes[0] + (buttons[15] ? 1 : 0) - (buttons[14] ? 1 : 0);
+        const padThrust = Math.max(0, -axes[1], buttons[0] ? 1 : 0, buttons[7] ? 1 : 0);
+        const isPtero = isPterodactyl(game);
+        const pteroFire = isPtero && !!buttons[11];
+
+        if (pteroFire && game.state) {
+            const plane = (game.state.planes || []).find(
+                (item) => item.slot === game.state.yourSlot);
+
+            if (plane) {
+                game.touch.aimX = plane.x + axes[2] * 10;
+                game.touch.aimY = plane.y + axes[3] * 10;
+                game.touch.aimActive = true;
+            }
+        } else if (pad && isPtero) {
+            game.touch.aimActive = false;
+        }
+
+        const ownPilot = game.state && (game.state.pilots || []).find(
+            (item) => item.slot === game.state.yourSlot);
+        const pilotInPlane = !ownPilot || ownPilot.state === "inplane";
+        const contextPressed = padDown(3);
         const aim = resolveAim(game);
 
+        game.gamepadPausePressed = padDown(9);
+
         const input = {
-            thrust: clamp((up - down) + touch.thrust - touch.moveY, -1, 1),
-            turn: clamp((right - left) + touch.moveX, -1, 1),
-            moveX: clamp((right - left) + touch.moveX, -1, 1),
-            moveY: clamp((down - up) + touch.moveY, -1, 1),
+            thrust: clamp((up - down) + touch.thrust - touch.moveY + padThrust, -1, 1),
+            turn: clamp((right - left) + touch.moveX + padTurn, -1, 1),
+            moveX: clamp((right - left) + touch.moveX + padTurn, -1, 1),
+            moveY: clamp((down - up) + touch.moveY + axes[1], -1, 1),
             aimX: aim.x,
             aimY: aim.y,
-            fire: game.mouse.down || keys.has("KeyF") || touch.fire,
-            ability: keys.has("Space") || game.abilityPressed,
-            reload: game.reloadPressed,
-            eject: game.ejectPressed,
-            parachute: game.parachutePressed
+            fire: game.mouse.down
+                || keys.has("KeyF")
+                || touch.fire
+                || (pteroFire || (!isPtero && (buttons[2] || buttons[7]))),
+            ability: keys.has("Space") || game.abilityPressed || padDown(1) || padDown(5),
+            reload: game.reloadPressed || padDown(4),
+            eject: game.ejectPressed || (contextPressed && pilotInPlane),
+            parachute: game.parachutePressed || (contextPressed && !pilotInPlane)
         };
 
         game.reloadPressed = false;
         game.ejectPressed = false;
         game.parachutePressed = false;
         game.abilityPressed = false;
+        game.gamepadButtons = buttons.slice();
         return input;
     }
 
@@ -218,6 +251,16 @@
         game.lastTimestamp = timestamp;
 
         const input = buildInput(game);
+
+        if (game.gamepadPausePressed && !game.gamepadPauseHandled) {
+            game.gamepadPauseHandled = true;
+            game.dotNetRef.invokeMethodAsync("TogglePause");
+        }
+
+        if (!game.gamepadPausePressed) {
+            game.gamepadPauseHandled = false;
+        }
+
         let stateJson;
 
         try {
